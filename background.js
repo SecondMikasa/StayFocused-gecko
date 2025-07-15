@@ -61,7 +61,7 @@ class PomodoroBackground {
         if (!this.state.isRunning) {
             this.state.isRunning = true;
             this.state.isPaused = false;
-            browser.alarms.create('pomodoroTick', { periodInMinutes: 1/60 });
+            browser.alarms.create('pomodoroTick', { periodInMinutes: 1 / 60 });
             this.updateBadge();
             this.saveState();
             const phaseText = this.state.currentPhase === 'focus' ? 'Focus session' : 'Break time';
@@ -146,11 +146,11 @@ class PomodoroBackground {
                 this.state.timeLeft = newSettings.longBreakTime * 60;
             }
         }
-        
+
         if (this.state.currentSession > this.settings.sessionsCount) {
             this.state.currentSession = this.settings.sessionsCount;
         }
-        
+
         browser.storage.local.set({ ...this.settings, totalSessions: this.state.totalSessions });
         this.updateBadge();
         this.saveState();
@@ -158,20 +158,30 @@ class PomodoroBackground {
     }
 
     updateBadge() {
-        const minutes = Math.floor(this.state.timeLeft / 60);
-        const seconds = this.state.timeLeft % 60;
-        const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        const timeLeft = this.state.timeLeft;
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
 
         let badgeColor = '#3498db';
-        let badgeText = timeText;
+        let badgeText = '';
 
         if (this.state.isRunning) {
             badgeColor = (this.state.currentPhase === 'focus') ? '#e74c3c' : '#27ae60';
-        } else if (this.state.isPaused) {
+
+            if (timeLeft > 60) {
+                badgeText = `${minutes}m`;
+            }
+            else {
+                badgeText = `${seconds}s`;
+            }
+
+        }
+        else if (this.state.isPaused) {
             badgeColor = '#f39c12';
-            badgeText = '⏸️';
-        } else {
-            badgeText = '▶️';
+            badgeText = '❚❚';
+        }
+        else {
+            badgeText = '▶';
         }
 
         browser.action.setBadgeText({ text: badgeText });
