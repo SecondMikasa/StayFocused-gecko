@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Pomodoro Timer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🍅 Stay Focused</h1>
+        </div>
+        
+        <div class="timer-display">
+            <div class="time-left" id="timeDisplay">25:00</div>
+            <div class="session-info" id="sessionInfo">Session 1 of 4</div>
+            <div class="status" id="statusDisplay">Ready to start</div>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn" class="btn btn-primary">Start</button>
+            <button id="pauseBtn" class="btn btn-secondary" disabled>Pause</button>
+            <button id="resetBtn" class="btn btn-danger">Reset</button>
+        </div>
+        
+        <div class="settings">
+            <h3>Settings</h3>
+            
+            <div class="setting-group">
+                <label for="focusTime">Focus Time (minutes):</label>
+                <input type="number" id="focusTime" min="1" max="120" value="25">
+            </div>
+            
+            <div class="setting-group">
+                <label for="breakTime">Break Time (minutes):</label>
+                <input type="number" id="breakTime" min="1" max="60" value="5">
+            </div>
+            
+            <div class="setting-group">
+                <label for="longBreakTime">Long Break Time (minutes):</label>
+                <input type="number" id="longBreakTime" min="1" max="60" value="15">
+            </div>
+            
+            <div class="setting-group">
+                <label for="sessionsCount">Number of Sessions:</label>
+                <input type="number" id="sessionsCount" min="1" max="20" value="4">
+            </div>
+            
+            <div class="setting-group">
+                <label>
+                    <input type="checkbox" id="autoStart"> Auto-start breaks
+                </label>
+            </div>
+            
+            <button id="saveSettings" class="btn btn-success">Save Settings</button>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 350px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+}
+
+.container {
+    background: white;
+    border-radius: 12px;
+    margin: 8px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.header {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.timer-display {
+    padding: 30px 20px;
+    text-align: center;
+    background: #f8f9fa;
+}
+
+.time-left {
+    font-size: 48px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-family: 'Courier New', monospace;
+}
+
+.session-info {
+    font-size: 16px;
+    color: #7f8c8d;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.status {
+    font-size: 14px;
+    color: #95a5a6;
+    font-style: italic;
+}
+
+.controls {
+    display: flex;
+    gap: 8px;
+    padding: 20px;
+    justify-content: center;
+}
+
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex: 1;
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    background: #27ae60;
+    color: white;
+}
+
+.btn-secondary {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-success {
+    background: #3498db;
+    color: white;
+    width: 100%;
+    margin-top: 15px;
+}
+
+.settings {
+    padding: 20px;
+    border-top: 1px solid #ecf0f1;
+    background: #fafbfc;
+}
+
+.settings h3 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-size: 18px;
+}
+
+.setting-group {
+    margin-bottom: 15px;
+}
+
+.setting-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #34495e;
+    font-size: 14px;
+}
+
+.setting-group input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e1e8ed;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+}
+
+.setting-group input[type="number"]:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.setting-group input[type="checkbox"] {
+    margin-right: 8px;
+    transform: scale(1.2);
+}
+
+.setting-group label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+/* Status-specific styling */
+.status.working {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.status.break {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.status.paused {
+    color: #f39c12;
+    font-weight: 600;
+}
