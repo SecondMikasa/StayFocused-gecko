@@ -126,7 +126,7 @@ class PomodoroTimer {
         if (this.isRunning) {
             this.startBtn.disabled = true;
             this.pauseBtn.disabled = false;
-            this.startBtn.textContent = 'Running...';
+            this.startBtn.textContent = 'Running';
         } else if (this.isPaused) {
             this.startBtn.disabled = false;
             this.pauseBtn.disabled = true;

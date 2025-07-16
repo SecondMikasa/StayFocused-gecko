@@ -168,13 +168,15 @@ class PomodoroBackground {
         if (this.state.isRunning) {
             badgeColor = (this.state.currentPhase === 'focus') ? '#e74c3c' : '#27ae60';
 
-            if (timeLeft > 60) {
-                badgeText = `${minutes}m`;
-            }
-            else {
-                badgeText = `${seconds}s`;
+            if (minutes > 9) {
+                badgeText = `${minutes}`; 
+            } else if (minutes > 0) {
+                badgeText = `${minutes}m`; 
+            } else {
+                badgeText = `${seconds}`; 
             }
 
+            badgeText = badgeText.substring(0, 2);
         }
         else if (this.state.isPaused) {
             badgeColor = '#f39c12';
