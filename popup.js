@@ -223,12 +223,25 @@ class PomodoroTimer {
     }
 
     addBlockedSite() {
-        // Sanitizing the URLs by removing protocol and www.
-        const site = new URL(
-            this.blockedSiteInput.value.trim().startsWith('http') ? 
-            this.blockedSiteInput.value.trim() : 
-            `https://${this.blockedSiteInput.value.trim()}`
-        ).hostname.replace(/^www\./, '');
+        const input = this.blockedSiteInput.value.trim();
+        if (!input) return;
+
+        let site;
+        try {
+            // If input looks like a URL, extract hostname
+            if (input.startsWith('http://') || input.startsWith('https://')) {
+                site = new URL(input).hostname.replace(/^www\./, '');
+            } else if (input.includes('/')) {
+                // If it has a path but no protocol, add https://
+                site = new URL('https://' + input).hostname.replace(/^www\./, '');
+            } else {
+                // Just a domain name
+                site = input.replace(/^www\./, '');
+            }
+        } catch (e) {
+            // If URL parsing fails, treat as domain name
+            site = input.replace(/^www\./, '');
+        }
 
         if (site) {
             browser.storage.local.get('blockedSites').then(result => {
@@ -238,9 +251,11 @@ class PomodoroTimer {
                     browser.storage.local.set({ blockedSites }).then(() => {
                         this.renderBlockList(blockedSites);
                         this.blockedSiteInput.value = '';
-                        // Inform the background script that the list has changed
                         browser.runtime.sendMessage({ action: 'updateBlocklist' });
+                        this.showNotification(`Added ${site} to block list`);
                     });
+                } else {
+                    this.showNotification(`${site} is already in the block list`);
                 }
             });
         }
@@ -252,8 +267,8 @@ class PomodoroTimer {
             blockedSites = blockedSites.filter(site => site !== siteToRemove);
             browser.storage.local.set({ blockedSites }).then(() => {
                 this.renderBlockList(blockedSites);
-                // Inform the background script that the list has changed
                 browser.runtime.sendMessage({ action: 'updateBlocklist' });
+                this.showNotification(`Removed ${siteToRemove} from block list`);
             });
         });
     }
