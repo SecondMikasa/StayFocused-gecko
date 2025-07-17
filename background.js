@@ -1,8 +1,13 @@
 class PomodoroBackground {
     constructor() {
+        // Bind the listener method to 'this' to maintain context
+        //FIXME: NO CLUE WHAT IT DOES (THANK THE AI GOD THAT MADE IT WORK)
+        this.blockingListener = this.blockingListener.bind(this);
+
         this.initializeTimer();
         this.setupMessageListener();
         this.setupAlarmListener();
+        this.loadBlockedSites(); 
     }
 
     initializeTimer() {
@@ -45,6 +50,13 @@ class PomodoroBackground {
                 case 'updateSettings':
                     this.updateSettings(request.settings);
                     return Promise.resolve({ success: true });
+                case 'updateBlocklist':
+                    this.loadBlockedSites(); 
+                    return Promise.resolve({ success: true });
+                case 'overrideBlock':
+                    this.state.overrideUntil = Date.now() + 60000; 
+                    this.saveState();
+                    return Promise.resolve({ success: true });
             }
         });
     }
@@ -57,13 +69,64 @@ class PomodoroBackground {
         });
     }
 
+    async loadBlockedSites() {
+        const { blockedSites } = await browser.storage.local.get('blockedSites');
+        this.blockedSites = blockedSites || [];
+        this.updateBlocking(); // Check if we need to change blocking state
+    }
+
+    blockingListener(details) {
+        // If override is active, do nothing
+        if (this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+            return;
+        }
+
+        // Check if the requested URL contains any of the blocked domains
+        const isBlocked = this.blockedSites.some(site => details.url.includes(site));
+
+        if (isBlocked) {
+            return {
+                redirectUrl: browser.runtime.getURL("blocked.html")
+            };
+        }
+    }
+
+    enableBlocking() {
+        if (!browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
+            browser.webRequest.onBeforeRequest.addListener(
+                this.blockingListener,
+                { urls: ["<all_urls>"], types: ["main_frame"] },
+                ["blocking"]
+            );
+        }
+    }
+
+    disableBlocking() {
+        if (browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
+            browser.webRequest.onBeforeRequest.removeListener(this.blockingListener);
+        }
+    }
+    
+    updateBlocking() {
+        if (this.state.isRunning && this.state.currentPhase === 'focus' && this.blockedSites.length > 0) {
+            this.enableBlocking();
+        } else {
+            this.disableBlocking();
+        }
+    }
+
     startTimer() {
         if (!this.state.isRunning) {
             this.state.isRunning = true;
             this.state.isPaused = false;
+            if (this.state.overrideUntil && Date.now() > this.state.overrideUntil) {
+                delete this.state.overrideUntil;
+            }
             browser.alarms.create('pomodoroTick', { periodInMinutes: 1 / 60 });
             this.updateBadge();
             this.saveState();
+            // Enable blocking if it's a focus session
+            this.updateBlocking();
             const phaseText = this.state.currentPhase === 'focus' ? 'Focus session' : 'Break time';
             this.showNotification(`${phaseText} started!`, `Session ${this.state.currentSession} of ${this.state.totalSessions}`);
         }
@@ -76,6 +139,7 @@ class PomodoroBackground {
             browser.alarms.clear('pomodoroTick');
             this.updateBadge();
             this.saveState();
+            this.updateBlocking(); 
             this.showNotification('Timer paused', 'Click to resume when ready');
         }
     }
@@ -86,9 +150,11 @@ class PomodoroBackground {
         this.state.currentSession = 1;
         this.state.currentPhase = 'focus';
         this.state.timeLeft = this.settings.focusTime * 60;
+        delete this.state.overrideUntil; 
         browser.alarms.clear('pomodoroTick');
         this.updateBadge();
         this.saveState();
+        this.updateBlocking(); 
         this.showNotification('Timer reset', 'Ready for a new session');
     }
 
@@ -131,6 +197,7 @@ class PomodoroBackground {
         }
         this.updateBadge();
         this.saveState();
+        this.updateBlocking(); 
     }
 
     updateSettings(newSettings) {
