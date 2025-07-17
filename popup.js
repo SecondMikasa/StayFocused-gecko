@@ -5,6 +5,7 @@ class PomodoroTimer {
         this.loadTimerState();
         this.setupEventListeners();
         this.updateDisplay();
+        this.loadBlockList();
         
         setInterval(() => this.updateDisplay(), 1000);
     }
@@ -24,6 +25,10 @@ class PomodoroTimer {
         this.sessionsCountInput = document.getElementById('sessionsCount');
         this.autoStartInput = document.getElementById('autoStart');
         this.saveSettingsBtn = document.getElementById('saveSettings');
+
+        this.blockedSiteInput = document.getElementById('blockedSiteInput');
+        this.addSiteBtn = document.getElementById('addSiteBtn');
+        this.blockList = document.getElementById('blockList');
     }
 
     setupEventListeners() {
@@ -31,6 +36,16 @@ class PomodoroTimer {
         this.pauseBtn.addEventListener('click', () => this.pauseTimer());
         this.resetBtn.addEventListener('click', () => this.resetTimer());
         this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+
+        this.addSiteBtn.addEventListener('click', () => this.addBlockedSite());
+        
+        // Using event delegation for the remove buttons
+        // NOTE: Event delegation is a programming pattern used in JavaScript to handle events efficiently. Instead of adding an event listener to each individual element, you can attach a single event listener to a parent element.
+        this.blockList.addEventListener('click', (event) => {
+            if (event.target.classList.contains('remove-site-btn')) {
+                this.removeBlockedSite(event.target.dataset.site);
+            }
+        });
     }
 
     loadSettings() {
@@ -198,6 +213,67 @@ class PomodoroTimer {
         setTimeout(() => {
             document.body.removeChild(notification);
         }, 2000);
+    }
+
+    loadBlockList() {
+        browser.storage.local.get('blockedSites').then(result => {
+            const sites = result.blockedSites || [];
+            this.renderBlockList(sites);
+        });
+    }
+
+    addBlockedSite() {
+        // Sanitizing the URLs by removing protocol and www.
+        const site = new URL(
+            this.blockedSiteInput.value.trim().startsWith('http') ? 
+            this.blockedSiteInput.value.trim() : 
+            `https://${this.blockedSiteInput.value.trim()}`
+        ).hostname.replace(/^www\./, '');
+
+        if (site) {
+            browser.storage.local.get('blockedSites').then(result => {
+                const blockedSites = result.blockedSites || [];
+                if (!blockedSites.includes(site)) {
+                    blockedSites.push(site);
+                    browser.storage.local.set({ blockedSites }).then(() => {
+                        this.renderBlockList(blockedSites);
+                        this.blockedSiteInput.value = '';
+                        // Inform the background script that the list has changed
+                        browser.runtime.sendMessage({ action: 'updateBlocklist' });
+                    });
+                }
+            });
+        }
+    }
+
+    removeBlockedSite(siteToRemove) {
+        browser.storage.local.get('blockedSites').then(result => {
+            let blockedSites = result.blockedSites || [];
+            blockedSites = blockedSites.filter(site => site !== siteToRemove);
+            browser.storage.local.set({ blockedSites }).then(() => {
+                this.renderBlockList(blockedSites);
+                // Inform the background script that the list has changed
+                browser.runtime.sendMessage({ action: 'updateBlocklist' });
+            });
+        });
+    }
+
+    renderBlockList(sites) {
+        this.blockList.innerHTML = ''; // Clear the current list
+        if (!sites || sites.length === 0) {
+            this.blockList.innerHTML = '<p class="blocker-info">No sites blocked yet.</p>';
+            return;
+        }
+
+        sites.forEach(site => {
+            const div = document.createElement('div');
+            div.className = 'blocked-site';
+            div.innerHTML = `
+                <span>${site}</span>
+                <button class="remove-site-btn" data-site="${site}" title="Remove ${site}">×</button>
+            `;
+            this.blockList.appendChild(div);
+        });
     }
 }
 

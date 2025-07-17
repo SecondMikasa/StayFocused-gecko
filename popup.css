@@ -178,3 +178,73 @@ body {
     color: #f39c12;
     font-weight: 600;
 }
+
+.blocker-settings {
+    padding: 20px;
+    border-top: 1px solid #ecf0f1;
+    background: #fafbfc;
+}
+
+.blocker-settings h3 {
+    margin-bottom: 5px;
+    color: #2c3e50;
+    font-size: 18px;
+}
+
+.blocker-info {
+    font-size: 13px;
+    color: #7f8c8d;
+    margin-bottom: 15px;
+}
+
+.setting-group.addon {
+    display: flex;
+}
+
+.setting-group.addon input[type="text"] {
+    flex-grow: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+
+.btn-addon {
+    border-radius: 0 8px 8px 0;
+    background: #3498db;
+    color: white;
+    padding: 10px 15px;
+    flex-shrink: 0;
+}
+
+.block-list {
+    margin-top: 15px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.blocked-site {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #ecf0f1;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #34495e;
+}
+
+.remove-site-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: bold;
+    color: #e74c3c;
+    padding: 0 5px;
+    line-height: 1;
+}
+
+.remove-site-btn:hover {
+    color: #c0392b;
+}
