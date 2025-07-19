@@ -1,7 +1,3 @@
-/**
- * FloatingTimer - Content script for displaying countdown timer during temporary access
- * Manages the floating timer widget that appears when users get temporary access to blocked sites
- */
 class FloatingTimer {
     constructor(initialTime = 60) {
         this.timeRemaining = initialTime;
@@ -10,62 +6,55 @@ class FloatingTimer {
         this.syncIntervalId = null;
         this.isActive = false;
         this.tabId = null;
-        
+
         // Bind methods to preserve context
         this.updateDisplay = this.updateDisplay.bind(this);
         this.handleExpiration = this.handleExpiration.bind(this);
         this.cleanup = this.cleanup.bind(this);
         this.sendTimerTick = this.sendTimerTick.bind(this);
         this.requestSync = this.requestSync.bind(this);
-        
+
         this.createTimerWidget();
         this.getTabId();
     }
-    
-    /**
-     * Creates the floating timer widget DOM element and adds it to the page
-     * Requirements: 2.1, 4.1, 4.2
-     */
+
+
     createTimerWidget() {
         // Create timer container
         this.timerElement = document.createElement('div');
-        this.timerElement.id = 'kiro-floating-timer';
-        this.timerElement.className = 'kiro-timer-widget';
-        
+        this.timerElement.id = 'floating-timer';
+        this.timerElement.className = 'timer-widget';
+
         // Create timer display
         const timerDisplay = document.createElement('div');
-        timerDisplay.className = 'kiro-timer-display';
+        timerDisplay.className = 'timer-display';
         timerDisplay.textContent = this.formatTime(this.timeRemaining);
-        
+
         // Create timer label
         const timerLabel = document.createElement('div');
-        timerLabel.className = 'kiro-timer-label';
+        timerLabel.className = 'timer-label';
         timerLabel.textContent = 'Temporary Access';
-        
+
         // Assemble widget
         this.timerElement.appendChild(timerLabel);
         this.timerElement.appendChild(timerDisplay);
-        
+
         // Apply basic inline styles for positioning and visibility
         this.applyBasicStyles();
-        
+
         // Add to page
         document.body.appendChild(this.timerElement);
     }
-    
-    /**
-     * Applies basic inline styles to ensure timer is visible and positioned correctly
-     * Requirements: 4.1, 4.2
-     */
+
     applyBasicStyles() {
         if (!this.timerElement) return;
-        
+
         // Fixed positioning in top-right corner
         this.timerElement.style.position = 'fixed';
         this.timerElement.style.top = '20px';
         this.timerElement.style.right = '20px';
         this.timerElement.style.zIndex = '999999';
-        
+
         // Semi-transparent background
         this.timerElement.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
         this.timerElement.style.color = 'white';
@@ -77,52 +66,44 @@ class FloatingTimer {
         this.timerElement.style.textAlign = 'center';
         this.timerElement.style.minWidth = '120px';
         this.timerElement.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.3)';
-        
+
         // Ensure it doesn't interfere with page interactions
         this.timerElement.style.pointerEvents = 'none';
         this.timerElement.style.userSelect = 'none';
     }
-    
-    /**
-     * Starts the countdown timer with synchronization
-     * Requirements: 2.2, 2.3, 5.4
-     */
+
     startCountdown() {
         if (this.isActive) return;
-        
+
         this.isActive = true;
         this.updateDisplay(this.timeRemaining);
-        
+
         // Update every second with timer tick messages
         this.intervalId = setInterval(() => {
             this.timeRemaining--;
             this.updateDisplay(this.timeRemaining);
-            
+
             // Send timer tick to background script for synchronization
             this.sendTimerTick();
-            
+
             if (this.timeRemaining <= 0) {
                 this.handleExpiration();
             }
         }, 1000);
-        
+
         // Set up periodic synchronization every 5 seconds to prevent drift
         this.syncIntervalId = setInterval(() => {
             this.requestSync();
         }, 5000);
     }
-    
-    /**
-     * Updates the timer display with current time remaining
-     * Requirements: 2.2, 4.3
-     */
+
     updateDisplay(timeRemaining) {
         if (!this.timerElement) return;
-        
-        const display = this.timerElement.querySelector('.kiro-timer-display');
+
+        const display = this.timerElement.querySelector('.timer-display');
         if (display) {
             display.textContent = this.formatTime(timeRemaining);
-            
+
             // Apply urgency styling when less than 10 seconds remain
             if (timeRemaining <= 10 && timeRemaining > 0) {
                 this.timerElement.style.backgroundColor = 'rgba(220, 53, 69, 0.9)';
@@ -130,29 +111,21 @@ class FloatingTimer {
             }
         }
     }
-    
-    /**
-     * Formats time in MM:SS format
-     * Requirements: 2.2
-     */
+
     formatTime(seconds) {
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = seconds % 60;
         return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
-    
-    /**
-     * Handles timer expiration
-     * Requirements: 2.4
-     */
+
     handleExpiration() {
         this.isActive = false;
-        
+
         // Hide timer widget
         if (this.timerElement) {
             this.timerElement.style.display = 'none';
         }
-        
+
         // Send expiration message to background script
         if (typeof browser !== 'undefined' && browser.runtime) {
             browser.runtime.sendMessage({
@@ -162,15 +135,11 @@ class FloatingTimer {
                 console.warn('Failed to send timer expiration message:', error);
             });
         }
-        
+
         // Clean up resources
         this.cleanup();
     }
-    
-    /**
-     * Gets the current tab ID for message passing
-     * Requirements: 5.4
-     */
+
     async getTabId() {
         if (this.tabId) {
             return this.tabId;
@@ -205,46 +174,38 @@ class FloatingTimer {
         this.tabId = -1;
         return this.tabId;
     }
-    
-    /**
-     * Cleans up timer resources and removes DOM elements
-     * Requirements: Proper resource management
-     */
+
     cleanup() {
         // Clear countdown interval
         if (this.intervalId) {
             clearInterval(this.intervalId);
             this.intervalId = null;
         }
-        
+
         // Clear sync interval
         if (this.syncIntervalId) {
             clearInterval(this.syncIntervalId);
             this.syncIntervalId = null;
         }
-        
+
         // Remove DOM element
         if (this.timerElement && this.timerElement.parentNode) {
             this.timerElement.parentNode.removeChild(this.timerElement);
             this.timerElement = null;
         }
-        
+
         // Reset state
         this.isActive = false;
         this.timeRemaining = 0;
         this.tabId = null;
     }
-    
-    /**
-     * Updates timer with new time remaining (for synchronization)
-     * Requirements: 2.3, 5.4
-     */
+
     syncTime(newTimeRemaining) {
         if (newTimeRemaining <= 0) {
             this.handleExpiration();
             return;
         }
-        
+
         // Only sync if there's a significant difference (more than 1 second)
         if (Math.abs(this.timeRemaining - newTimeRemaining) > 1) {
             console.log(`[FloatingTimer] Syncing time from ${this.timeRemaining}s to ${newTimeRemaining}s`);
@@ -252,14 +213,10 @@ class FloatingTimer {
             this.updateDisplay(this.timeRemaining);
         }
     }
-    
-    /**
-     * Sends timer tick message to background script for synchronization
-     * Requirements: 2.3, 5.4
-     */
+
     sendTimerTick() {
         if (!this.tabId || this.tabId === -1) return;
-        
+
         try {
             // Check if runtime is still available
             if (!browser.runtime || !browser.runtime.sendMessage) {
@@ -284,14 +241,10 @@ class FloatingTimer {
             console.warn('[FloatingTimer] Failed to send timer tick message:', error);
         }
     }
-    
-    /**
-     * Requests time synchronization from background script
-     * Requirements: 2.3, 5.4
-     */
+
     requestSync() {
         if (!this.tabId || this.tabId === -1) return;
-        
+
         try {
             // Check if runtime is still available
             if (!browser.runtime || !browser.runtime.sendMessage) {
@@ -317,18 +270,14 @@ class FloatingTimer {
         }
     }
 
-    /**
-     * Handles extension context loss scenarios
-     * Requirements: 5.3, 5.4
-     */
     handleExtensionContextLoss() {
         console.log('[FloatingTimer] Handling extension context loss');
-        
+
         // Show a fallback message to user
         if (this.timerElement) {
-            const display = this.timerElement.querySelector('.kiro-timer-display');
-            const label = this.timerElement.querySelector('.kiro-timer-label');
-            
+            const display = this.timerElement.querySelector('.timer-display');
+            const label = this.timerElement.querySelector('.timer-label');
+
             if (display) {
                 display.textContent = 'Extension Reloaded';
                 display.style.fontSize = '12px';
@@ -337,21 +286,21 @@ class FloatingTimer {
                 label.textContent = 'Timer may be inaccurate';
                 label.style.fontSize = '10px';
             }
-            
+
             // Change styling to indicate issue
             this.timerElement.style.backgroundColor = 'rgba(255, 193, 7, 0.9)';
             this.timerElement.style.color = 'black';
         }
-        
+
         // Stop trying to communicate with background
         this.isActive = false;
-        
+
         // Clear intervals to prevent further errors
         if (this.intervalId) {
             clearInterval(this.intervalId);
             this.intervalId = null;
         }
-        
+
         if (this.syncIntervalId) {
             clearInterval(this.syncIntervalId);
             this.syncIntervalId = null;
@@ -391,7 +340,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
                         sendResponse({ success: false, error: error.message });
                     }
                     break;
-                    
+
                 case 'syncTimer':
                     try {
                         if (floatingTimer) {
@@ -405,7 +354,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
                         sendResponse({ success: false, error: error.message });
                     }
                     break;
-                    
+
                 case 'stopTimer':
                     try {
                         if (floatingTimer) {
@@ -418,7 +367,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
                         sendResponse({ success: false, error: error.message });
                     }
                     break;
-                    
+
                 default:
                     sendResponse({ success: false, error: 'Unknown action' });
                     break;
@@ -427,7 +376,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
             console.error('[FloatingTimer] Error handling message:', error);
             sendResponse({ success: false, error: error.message });
         }
-        
+
         // Return true to indicate we will send a response asynchronously if needed
         return true;
     });

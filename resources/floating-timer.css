@@ -1,7 +1,4 @@
-/* Floating Timer Widget Styles */
-
 .floating-timer {
-    /* Fixed positioning - top-right corner */
     position: fixed;
     top: 20px;
     right: 20px;

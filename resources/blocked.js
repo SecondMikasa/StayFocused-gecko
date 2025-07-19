@@ -5,10 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('blockedUrl').textContent = blockedUrl;
     }
 
-    /**
-     * Validates that the blocked URL is suitable for redirection
-     * Requirements: 5.3, 1.2
-     */
     function validateRedirectionUrl(url) {
         if (!url) {
             throw new Error('No URL provided for redirection');
@@ -36,10 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * Gets current tab context with error handling
-     * Requirements: 5.3, 1.2
-     */
     async function getCurrentTabContext() {
         try {
             const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -74,13 +66,137 @@ document.addEventListener('DOMContentLoaded', () => {
         { quote: "Concentrate all your thoughts upon the work in hand.", author: "Alexander Graham Bell" },
         { quote: "The successful warrior is the average man, with laser-like focus.", author: "Bruce Lee" },
         { quote: "Focus is a matter of deciding what things you're not going to do.", author: "John Carmack" },
-        { quote: "Where focus goes, energy flows and results show.", author: "Tony Robbins" }
+        { quote: "Where focus goes, energy flows and results show.", author: "Tony Robbins" },
+        { quote: "The art of being wise is knowing what to overlook.", author: "William James" },
+        { quote: "Concentration is the secret of strength.", author: "Ralph Waldo Emerson" },
+        { quote: "The successful person has the habit of doing the things failures don't like to do.", author: "Thomas Edison" },
+        { quote: "You are what you do, not what you say you'll do.", author: "Carl Jung" },
+        { quote: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+        { quote: "Don't watch the clock; do what it does. Keep going.", author: "Sam Levenson" },
+        { quote: "The future depends on what you do today.", author: "Mahatma Gandhi" },
+        { quote: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
+        { quote: "What we plant in the soil of contemplation, we shall reap in the harvest of action.", author: "Meister Eckhart" },
+        { quote: "The mind is everything. What you think you become.", author: "Buddha" },
+        { quote: "Your limitation—it's only your imagination.", author: "Unknown" },
+        { quote: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
+        { quote: "Great things never come from comfort zones.", author: "Unknown" },
+        { quote: "Dream it. Wish it. Do it.", author: "Unknown" },
+        { quote: "Success doesn't just find you. You have to go out and get it.", author: "Unknown" },
+        { quote: "The harder you work for something, the greater you'll feel when you achieve it.", author: "Unknown" },
+        { quote: "Dream bigger. Do bigger.", author: "Unknown" },
+        { quote: "Don't stop when you're tired. Stop when you're done.", author: "Unknown" },
+        { quote: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" },
+        { quote: "Do something today that your future self will thank you for.", author: "Sean Patrick Flanery" },
+        { quote: "Little things make big days.", author: "Unknown" },
+        { quote: "It's going to be hard, but hard does not mean impossible.", author: "Unknown" },
+        { quote: "Don't wait for opportunity. Create it.", author: "Unknown" },
+        { quote: "Sometimes we're tested not to show our weaknesses, but to discover our strengths.", author: "Unknown" }
     ];
 
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
     document.getElementById('quote').textContent = `"${randomQuote.quote}"`;
     document.getElementById('author').textContent = `- ${randomQuote.author}`;
-
+    
+    // Visual Enhancements Class
+    class VisualEnhancements {
+        constructor() {
+            this.focusStartTime = Date.now();
+            
+            this.initializeElements();
+            this.startFocusTimer();
+            this.addInteractionEffects();
+            this.createSparkleEffect();
+        }
+        
+        initializeElements() {
+            this.focusTimeElement = document.getElementById('focusTime');
+        }
+        
+        startFocusTimer() {
+            setInterval(() => {
+                const elapsed = Math.floor((Date.now() - this.focusStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                this.focusTimeElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+        
+        addInteractionEffects() {
+            // Add click effects to interactive elements
+            document.querySelectorAll('.interactive-element').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    this.createRippleEffect(e);
+                });
+            });
+            
+            // Add hover effects to animated icons
+            document.querySelectorAll('.animated-icon').forEach(icon => {
+                icon.addEventListener('mouseenter', () => {
+                    this.createSparkles(icon);
+                });
+            });
+        }
+        
+        createRippleEffect(event) {
+            const button = event.currentTarget;
+            const rect = button.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            const x = event.clientX - rect.left - size / 2;
+            const y = event.clientY - rect.top - size / 2;
+            
+            const ripple = document.createElement('div');
+            ripple.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                left: ${x}px;
+                top: ${y}px;
+                background: rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                transform: scale(0);
+                animation: ripple 0.6s ease-out;
+                pointer-events: none;
+            `;
+            
+            button.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
+        }
+        
+        createSparkles(element) {
+            const rect = element.getBoundingClientRect();
+            
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    const sparkle = document.createElement('div');
+                    sparkle.className = 'sparkle';
+                    
+                    const x = rect.left + Math.random() * rect.width;
+                    const y = rect.top + Math.random() * rect.height;
+                    
+                    sparkle.style.left = x + 'px';
+                    sparkle.style.top = y + 'px';
+                    
+                    document.body.appendChild(sparkle);
+                    
+                    setTimeout(() => sparkle.remove(), 1500);
+                }, i * 100);
+            }
+        }
+        
+        createSparkleEffect() {
+            // Periodic sparkle effect on the main container
+            setInterval(() => {
+                const container = document.querySelector('.container');
+                if (container && Math.random() < 0.3) { // 30% chance every interval
+                    this.createSparkles(container);
+                }
+            }, 5000);
+        }
+    }
+    
+    // Initialize visual enhancements
+    const visualEnhancements = new VisualEnhancements();
+    
     const overrideBtn = document.getElementById('overrideBtn');
     overrideBtn.addEventListener('click', async () => {
         try {
