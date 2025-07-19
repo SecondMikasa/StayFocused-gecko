@@ -6,7 +6,7 @@ class PomodoroTimer {
         this.setupEventListeners();
         this.updateDisplay();
         this.loadBlockList();
-        
+
         setInterval(() => this.updateDisplay(), 1000);
     }
 
@@ -14,11 +14,11 @@ class PomodoroTimer {
         this.timeDisplay = document.getElementById('timeDisplay');
         this.sessionInfo = document.getElementById('sessionInfo');
         this.statusDisplay = document.getElementById('statusDisplay');
-        
+
         this.startBtn = document.getElementById('startBtn');
         this.pauseBtn = document.getElementById('pauseBtn');
         this.resetBtn = document.getElementById('resetBtn');
-        
+
         this.focusTimeInput = document.getElementById('focusTime');
         this.breakTimeInput = document.getElementById('breakTime');
         this.longBreakTimeInput = document.getElementById('longBreakTime');
@@ -38,7 +38,7 @@ class PomodoroTimer {
         this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
 
         this.addSiteBtn.addEventListener('click', () => this.addBlockedSite());
-        
+
         // Using event delegation for the remove buttons
         // NOTE: Event delegation is a programming pattern used in JavaScript to handle events efficiently. Instead of adding an event listener to each individual element, you can attach a single event listener to a parent element.
         this.blockList.addEventListener('click', (event) => {
@@ -50,7 +50,7 @@ class PomodoroTimer {
 
     loadSettings() {
         browser.storage.local.get([
-            'focusTime', 'breakTime', 'longBreakTime', 
+            'focusTime', 'breakTime', 'longBreakTime',
             'sessionsCount', 'autoStart'
         ]).then((result) => {
             this.focusTimeInput.value = result.focusTime || 25;
@@ -63,7 +63,7 @@ class PomodoroTimer {
 
     loadTimerState() {
         browser.storage.local.get([
-            'isRunning', 'isPaused', 'currentSession', 'isBreak', 
+            'isRunning', 'isPaused', 'currentSession', 'isBreak',
             'timeLeft', 'totalSessions', 'currentPhase'
         ]).then((result) => {
             this.isRunning = result.isRunning || false;
@@ -73,7 +73,7 @@ class PomodoroTimer {
             this.timeLeft = result.timeLeft || (parseInt(this.focusTimeInput.value) * 60);
             this.totalSessions = result.totalSessions || parseInt(this.sessionsCountInput.value);
             this.currentPhase = result.currentPhase || 'focus';
-            
+
             this.updateButtonStates();
         });
     }
@@ -155,7 +155,7 @@ class PomodoroTimer {
 
     updateDisplay() {
         browser.storage.local.get([
-            'timeLeft', 'currentSession', 'totalSessions', 
+            'timeLeft', 'currentSession', 'totalSessions',
             'currentPhase', 'isRunning', 'isPaused'
         ]).then((result) => {
             const timeLeft = result.timeLeft || this.timeLeft || 0;
@@ -172,7 +172,7 @@ class PomodoroTimer {
 
             let status = '';
             let statusClass = '';
-            
+
             if (isRunning) {
                 if (currentPhase === 'focus') {
                     status = '🎯 Focus Time - Stay concentrated!';
@@ -224,7 +224,12 @@ class PomodoroTimer {
 
     addBlockedSite() {
         const input = this.blockedSiteInput.value.trim();
-        if (!input) return;
+        // console.log("[Popup] Adding blocked site:", input);
+
+        if (!input) {
+            // console.log("[Popup] Empty input - ignoring");
+            return;
+        }
 
         let site;
         try {
@@ -244,15 +249,25 @@ class PomodoroTimer {
         }
 
         if (site) {
+            // console.log(`[Popup] Processed site to block: ${site}`);
             browser.storage.local.get('blockedSites').then(result => {
                 const blockedSites = result.blockedSites || [];
+                // console.log("[Popup] Current blocked sites:", blockedSites);
+
                 if (!blockedSites.includes(site)) {
                     blockedSites.push(site);
+                    // console.log("[Popup] Updated blocked sites:", blockedSites);
+
                     browser.storage.local.set({ blockedSites }).then(() => {
-                        this.renderBlockList(blockedSites);
-                        this.blockedSiteInput.value = '';
-                        browser.runtime.sendMessage({ action: 'updateBlocklist' });
-                        this.showNotification(`Added ${site} to block list`);
+                        // console.log("[Popup] Successfully saved blocked sites");
+
+                        // Force background to reload sites
+                        browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
+                            // console.log("[Popup] Background blocklist updated");
+                            this.renderBlockList(blockedSites);
+                            this.blockedSiteInput.value = '';
+                            this.showNotification(`Added ${site} to block list`);
+                        });
                     });
                 } else {
                     this.showNotification(`${site} is already in the block list`);
@@ -262,14 +277,21 @@ class PomodoroTimer {
     }
 
     removeBlockedSite(siteToRemove) {
+        // console.log(`[Popup] Removing blocked site: ${siteToRemove}`);
         browser.storage.local.get('blockedSites').then(result => {
             let blockedSites = result.blockedSites || [];
+            // console.log("[Popup] Current blocked sites:", blockedSites);
+
             blockedSites = blockedSites.filter(site => site !== siteToRemove);
+            // console.log("[Popup] Updated blocked sites after removal:", blockedSites);
+
             browser.storage.local.set({ blockedSites }).then(() => {
-                this.renderBlockList(blockedSites);
-                browser.runtime.sendMessage({ action: 'updateBlocklist' });
-                this.showNotification(`Removed ${siteToRemove} from block list`);
+                // console.log("[Popup] Successfully removed site");
+            }).catch(err => {
+                console.error("[Popup] Error saving after removal:", err);
             });
+        }).catch(err => {
+            console.error("[Popup] Error retrieving blocked sites for removal:", err);
         });
     }
 

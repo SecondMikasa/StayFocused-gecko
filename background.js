@@ -1,5 +1,6 @@
 class PomodoroBackground {
     constructor() {
+        // console.log("[Background] Initializing PomodoroBackground...");
         // Bind the listener method to 'this' to maintain context
         //FIXME: NO CLUE WHAT IT DOES (THANK THE AI GOD THAT MADE IT WORK)
         this.blockingListener = this.blockingListener.bind(this);
@@ -7,7 +8,7 @@ class PomodoroBackground {
         this.initializeTimer();
         this.setupMessageListener();
         this.setupAlarmListener();
-        this.loadBlockedSites(); 
+        this.loadBlockedSites();
     }
 
     initializeTimer() {
@@ -32,6 +33,7 @@ class PomodoroBackground {
                 isPaused: result.isPaused || false
             };
             this.saveState();
+            this.updateBlocking();
         });
     }
 
@@ -51,10 +53,11 @@ class PomodoroBackground {
                     this.updateSettings(request.settings);
                     return Promise.resolve({ success: true });
                 case 'updateBlocklist':
-                    this.loadBlockedSites(); 
+                    // console.log("[Background] Received blocklist update request");
+                    this.loadBlockedSites();
                     return Promise.resolve({ success: true });
                 case 'overrideBlock':
-                    this.state.overrideUntil = Date.now() + 60000; 
+                    this.state.overrideUntil = Date.now() + 60000;
                     this.saveState();
                     return Promise.resolve({ success: true });
             }
@@ -70,62 +73,140 @@ class PomodoroBackground {
     }
 
     async loadBlockedSites() {
-        const { blockedSites } = await browser.storage.local.get('blockedSites');
-        this.blockedSites = blockedSites || [];
-        this.updateBlocking();
+        // console.log("[Blocking] Loading blocked sites from storage");
+        try {
+            const result = await browser.storage.local.get('blockedSites');
+            this.blockedSites = result.blockedSites || [];
+            // console.log("[Blocking] Current blocked sites:", this.blockedSites);
+
+            // Validate the sites array
+            if (!Array.isArray(this.blockedSites)) {
+                // console.error("[Blocking] Invalid blockedSites format, resetting to empty array");
+                this.blockedSites = [];
+                await browser.storage.local.set({ blockedSites: [] });
+            }
+
+            this.updateBlocking();
+            return true; // Indicate success
+        } catch (err) {
+            // console.error("[Blocking] Error loading blocked sites:", err);
+            this.blockedSites = [];
+            this.updateBlocking();
+            return false;
+        }
     }
 
     blockingListener(details) {
+        // console.groupCollapsed(`[Blocking] Request to: ${details.url}`);
+        // console.log("Request details:", details);
         // If override is active, allow the request
         if (this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+            // console.log(`[Blocking] Override active until ${new Date(this.state.overrideUntil)} - allowing request`);
+            // console.groupEnd();
             return;
         }
 
         // Only block during focus sessions when timer is running
         if (!this.state.isRunning || this.state.currentPhase !== 'focus') {
+            // console.log("[Blocking] Not in focus session - allowing request");
+            // console.groupEnd();
             return;
         }
 
         // Parse the URL to get the hostname
         let hostname;
         try {
-            hostname = new URL(details.url).hostname.replace(/^www\./, '');
+            const urlObj = new URL(details.url);
+            hostname = urlObj.hostname;
+
+            // Remove www. prefix and convert to lowercase
+            hostname = hostname.replace(/^www\./i, '').toLowerCase();
+            // console.log(`[Blocking] Normalized hostname: ${hostname}`);
         } catch (e) {
-            return; // Invalid URL, don't block
+            console.error("[Blocking] Error parsing URL:", e);
+            console.groupEnd();
+            return;
         }
 
         // Check if the hostname matches any blocked site
         const isBlocked = this.blockedSites.some(site => {
-            return hostname === site || hostname.endsWith('.' + site);
+            const normalizedSite = site.toLowerCase().replace(/^www\./i, '');
+            const match = (
+                hostname === normalizedSite ||
+                hostname.endsWith(`.${normalizedSite}`)
+            );
+
+            // console.log(`[Blocking] Checking ${hostname} against ${normalizedSite}: ${match}`);
+            return match;
         });
 
         if (isBlocked) {
-            return {
-                redirectUrl: browser.runtime.getURL("blocked.html")
-            };
+            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url);
+            const fullUrl = browser.runtime.getURL(redirectPath);
+            // console.log(`[Blocking] Redirecting to: ${fullUrl}`);
+
+            // Verify this URL works by opening it in a new tab for testing:
+            // browser.tabs.create({url: fullUrl});
+
+            return { redirectUrl: fullUrl };
         }
+        // console.log("[Blocking] Site not in block list - allowing request");
+        // console.groupEnd();
     }
 
     enableBlocking() {
+        // console.log("[Blocking] Attempting to enable blocking");
         if (!browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
-            browser.webRequest.onBeforeRequest.addListener(
-                this.blockingListener,
-                { urls: ["<all_urls>"], types: ["main_frame", "sub_frame"] },
-                ["blocking"]
-            );
+            // console.log("[Blocking] Adding webRequest listener");
+            try {
+                browser.webRequest.onBeforeRequest.addListener(
+                    this.blockingListener,
+                    { urls: ["<all_urls>"], types: ["main_frame"] },
+                    ["blocking"]
+                );
+                // console.log("[Blocking] Listener successfully added");
+            } catch (err) {
+                console.error("[Blocking] Error adding listener:", err);
+            }
+        } else {
+            console.log("[Blocking] Listener already exists");
         }
     }
 
     disableBlocking() {
+        // console.log("[Blocking] Attempting to disable blocking");
         if (browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
+            // console.log("[Blocking] Removing webRequest listener");
             browser.webRequest.onBeforeRequest.removeListener(this.blockingListener);
+        } else {
+            console.log("[Blocking] No listener to remove");
         }
     }
-    
+
     updateBlocking() {
-        if (this.state && this.state.isRunning && this.state.currentPhase === 'focus' && this.blockedSites && this.blockedSites.length > 0) {
+        if (!this.state || !this.blockedSites) {
+            // console.warn("[Blocking] Cannot update blocking - state or sites not initialized");
+            return;
+        }
+
+        // console.log(`[Blocking] Update conditions: 
+        // isRunning: ${this.state.isRunning},
+        // currentPhase: ${this.state.currentPhase},
+        // blockedSites count: ${this.blockedSites.length}`);
+
+        const shouldBlock = (
+            this.state.isRunning &&
+            this.state.currentPhase === 'focus' &&
+            this.blockedSites.length > 0
+        );
+
+        // console.log(`[Blocking] Should block: ${shouldBlock}`);
+
+        if (shouldBlock) {
+            // console.log("[Blocking] Enabling blocking (focus session with blocked sites)");
             this.enableBlocking();
         } else {
+            // console.log("[Blocking] Disabling blocking (not in focus or no sites)");
             this.disableBlocking();
         }
     }
@@ -173,7 +254,12 @@ class PomodoroBackground {
     }
 
     tick() {
-        if (!this.state.isRunning) return;
+        if (!this.state.isRunning) {
+            // console.log("[Timer] Ticked but timer not running");
+            return;
+        }
+
+        // console.log(`[Timer] Tick! Time left: ${this.state.timeLeft}s`);
         this.state.timeLeft--;
         this.updateBadge();
         this.saveState();
@@ -250,11 +336,11 @@ class PomodoroBackground {
             badgeColor = (this.state.currentPhase === 'focus') ? '#e74c3c' : '#27ae60';
 
             if (minutes > 9) {
-                badgeText = `${minutes}`; 
+                badgeText = `${minutes}`;
             } else if (minutes > 0) {
-                badgeText = `${minutes}m`; 
+                badgeText = `${minutes}m`;
             } else {
-                badgeText = `${seconds}`; 
+                badgeText = `${seconds}`;
             }
 
             badgeText = badgeText.substring(0, 2);

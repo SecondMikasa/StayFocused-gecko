@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const blockedUrl = urlParams.get('url');
+    if (blockedUrl) {
+        document.getElementById('blockedUrl').textContent = blockedUrl;
+    }
+
     const quotes = [
         { quote: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
         { quote: "The secret of getting ahead is getting started.", author: "Mark Twain" },
@@ -18,11 +24,13 @@ document.addEventListener('DOMContentLoaded', () => {
             overrideBtn.textContent = "You have 1 minute of access!";
             overrideBtn.disabled = true;
             overrideBtn.style.background = '#27ae60';
-            
-            // Redirect back to the original page after a short delay
-            setTimeout(() => {
+
+            // Redirect back to the original page
+            if (blockedUrl) {
+                window.location.href = blockedUrl;
+            } else {
                 window.history.back();
-            }, 1000);
+            }
         });
     });
 });
