@@ -1,8 +1,40 @@
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const blockedUrl = urlParams.get('url');
+    const blockingMode = urlParams.get('mode') || 'focus-only';
+    const timerRunning = urlParams.get('timerRunning') === 'true';
+    const currentPhase = urlParams.get('phase') || 'focus';
+    
     if (blockedUrl) {
         document.getElementById('blockedUrl').textContent = blockedUrl;
+    }
+    
+    // Show appropriate blocking reason message
+    updateBlockingReasonDisplay(blockingMode, timerRunning, currentPhase);
+
+    function updateBlockingReasonDisplay(mode, isTimerRunning, phase) {
+        const focusModeMessage = document.getElementById('focusModeMessage');
+        const alwaysModeMessage = document.getElementById('alwaysModeMessage');
+        
+        // Hide both messages initially
+        focusModeMessage.style.display = 'none';
+        alwaysModeMessage.style.display = 'none';
+        
+        if (mode === 'focus-only') {
+            // Show focus mode message with current timer state
+            focusModeMessage.style.display = 'block';
+            if (isTimerRunning && phase === 'focus') {
+                focusModeMessage.innerHTML = '<span class="mode-icon">⏰</span> Blocked during active focus session';
+            } else if (isTimerRunning && phase !== 'focus') {
+                focusModeMessage.innerHTML = '<span class="mode-icon">⏰</span> Blocked during timer session';
+            } else {
+                focusModeMessage.innerHTML = '<span class="mode-icon">⏰</span> Blocked during focus mode';
+            }
+        } else if (mode === 'always') {
+            // Show always mode message
+            alwaysModeMessage.style.display = 'block';
+            alwaysModeMessage.innerHTML = '<span class="mode-icon">🚫</span> Always blocked';
+        }
     }
 
     function validateRedirectionUrl(url) {

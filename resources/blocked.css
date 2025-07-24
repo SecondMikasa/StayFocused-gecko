@@ -124,6 +124,45 @@ h1 {
     text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
 }
 
+/* Blocking reason display */
+.blocking-reason {
+    margin: 1rem 0 2rem 0;
+    animation: blockingReasonFadeIn 1s ease-out 0.4s both;
+}
+
+@keyframes blockingReasonFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mode-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    font-size: clamp(0.9rem, 2.2vw, 1.1rem);
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.mode-icon {
+    font-size: 1.2em;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+}
+
 @keyframes textShimmer {
 
     0%,

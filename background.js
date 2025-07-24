@@ -98,12 +98,12 @@ class PomodoroBackground {
 
                     // Store the domain that has temporary access for cross-domain navigation handling
                     if (request.originalUrl) {
-                        try {
-                            const urlObj = new URL(request.originalUrl);
-                            this.state.overrideDomain = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+                        const domain = this.normalizeUrl(request.originalUrl);
+                        if (domain) {
+                            this.state.overrideDomain = domain;
                             console.log(`[Timer] Override granted for domain: ${this.state.overrideDomain}`);
-                        } catch (error) {
-                            console.error('[Timer] Failed to parse override URL:', error);
+                        } else {
+                            console.error('[Timer] Failed to normalize override URL:', request.originalUrl);
                         }
                     }
 
@@ -124,6 +124,10 @@ class PomodoroBackground {
                     break;
                 case 'trackBreathingInteraction':
                     this.trackBreathingInteraction(request.interaction);
+                    sendResponse({ success: true });
+                    break;
+                case 'updateBlockingMode':
+                    this.updateBlockingModeFromMessage(request.blockingMode);
                     sendResponse({ success: true });
                     break;
             }
@@ -230,6 +234,20 @@ class PomodoroBackground {
                 if (this.state.overrideTabId && this.state.overrideTabId !== activeInfo.tabId) {
                     this.validateOverrideState();
                 }
+
+                // Check if the newly activated tab contains a blocked site
+                browser.tabs.get(activeInfo.tabId).then(tab => {
+                    if (tab && tab.url) {
+                        this.checkAndRefreshBlockedTab(activeInfo.tabId, tab.url);
+                    }
+                }).catch(error => {
+                    // Handle tab access failures and invalid tab IDs
+                    if (error.message && error.message.includes('No tab with id')) {
+                        console.warn(`[Blocking] Tab ${activeInfo.tabId} no longer exists during activation check`);
+                    } else {
+                        console.error(`[Blocking] Error getting tab info during activation for tab ${activeInfo.tabId}:`, error);
+                    }
+                });
             } catch (error) {
                 console.error(`[Timer] Error handling tab activation:`, error);
             }
@@ -520,6 +538,112 @@ class PomodoroBackground {
         return this.settings?.blockingMode || 'focus-only';
     }
 
+    updateBlockingModeFromMessage(newBlockingMode) {
+        // Update the settings object
+        if (!this.settings) {
+            this.settings = {};
+        }
+        this.settings.blockingMode = newBlockingMode;
+        
+        // Save to storage
+        browser.storage.local.set({ blockingMode: newBlockingMode }).then(() => {
+            console.log(`[Blocking] Blocking mode updated to: ${newBlockingMode}`);
+            // Immediately apply new blocking behavior
+            this.updateBlocking();
+        }).catch(error => {
+            console.error('[Blocking] Error saving blocking mode:', error);
+        });
+    }
+
+    // Enhanced URL normalization to handle edge cases
+    normalizeUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+
+        try {
+            // Handle URLs without protocol by adding https://
+            let normalizedUrl = url.trim();
+            if (!/^https?:\/\//i.test(normalizedUrl)) {
+                normalizedUrl = 'https://' + normalizedUrl;
+            }
+
+            const urlObj = new URL(normalizedUrl);
+            
+            // Extract hostname and normalize
+            let hostname = urlObj.hostname;
+            
+            // Handle special characters and internationalized domain names
+            try {
+                // Convert to ASCII if possible (handles IDN domains)
+                hostname = hostname.toLowerCase();
+            } catch (error) {
+                console.warn('[URL] Could not normalize hostname with special characters:', hostname);
+                hostname = hostname.toLowerCase();
+            }
+
+            // Remove www. prefix for consistent matching
+            hostname = hostname.replace(/^www\./i, '');
+            
+            // Handle edge case of empty hostname after www removal
+            if (!hostname) {
+                return null;
+            }
+
+            return hostname;
+        } catch (error) {
+            // Handle invalid URLs gracefully
+            console.warn('[URL] Invalid URL provided for normalization:', url, error.message);
+            return null;
+        }
+    }
+
+    // Enhanced URL matching with improved subdomain support
+    isUrlBlocked(url, blockedSites) {
+        if (!url || !blockedSites || !Array.isArray(blockedSites) || blockedSites.length === 0) {
+            return false;
+        }
+
+        const normalizedHostname = this.normalizeUrl(url);
+        if (!normalizedHostname) {
+            return false;
+        }
+
+        return blockedSites.some(site => {
+            if (!site || typeof site !== 'string') {
+                return false;
+            }
+
+            const normalizedSite = this.normalizeUrl(site);
+            if (!normalizedSite) {
+                return false;
+            }
+
+            // Exact match
+            if (normalizedHostname === normalizedSite) {
+                return true;
+            }
+
+            // Subdomain match - ensure we're matching full domain components
+            // e.g., facebook.com should match www.facebook.com and sub.facebook.com
+            // but not fakefacebook.com
+            if (normalizedHostname.endsWith(`.${normalizedSite}`)) {
+                return true;
+            }
+
+            // Handle case where blocked site includes subdomain
+            // e.g., if blocked site is "sub.facebook.com", it should match exactly
+            // but not match "facebook.com"
+            return false;
+        });
+    }
+
+    // Extract domain from URL for blocking (enhanced version)
+    extractDomain(url) {
+        const normalized = this.normalizeUrl(url);
+        return normalized;
+    }
+
     shouldBlockTab(url, timerState, blockingMode) {
         // If no URL provided, don't block
         if (!url) {
@@ -531,23 +655,8 @@ class PomodoroBackground {
             return false;
         }
 
-        // Check if URL matches any blocked site
-        let isUrlBlocked = false;
-        try {
-            const urlObj = new URL(url);
-            const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
-
-            isUrlBlocked = this.blockedSites.some(site => {
-                const normalizedSite = site.toLowerCase().replace(/^www\./i, '');
-                return (
-                    hostname === normalizedSite ||
-                    hostname.endsWith(`.${normalizedSite}`)
-                );
-            });
-        } catch (error) {
-            console.error('[Blocking] Error parsing URL for blocking decision:', error);
-            return false;
-        }
+        // Use enhanced URL matching logic
+        const isUrlBlocked = this.isUrlBlocked(url, this.blockedSites);
 
         // If URL is not in blocked list, don't block
         if (!isUrlBlocked) {
@@ -603,35 +712,25 @@ class PomodoroBackground {
             return;
         }
 
-        // Parse the URL to get the hostname
-        let hostname;
-        try {
-            const urlObj = new URL(details.url);
-            hostname = urlObj.hostname;
-
-            // Remove www. prefix and convert to lowercase
-            hostname = hostname.replace(/^www\./i, '').toLowerCase();
-            // console.log(`[Blocking] Normalized hostname: ${hostname}`);
-        } catch (e) {
-            console.error("[Blocking] Error parsing URL:", e);
-            console.groupEnd();
+        // Use enhanced URL matching logic
+        const isBlocked = this.isUrlBlocked(details.url, this.blockedSites);
+        const hostname = this.normalizeUrl(details.url);
+        
+        if (!hostname && isBlocked) {
+            console.warn("[Blocking] Could not normalize URL but marked as blocked:", details.url);
+            // console.groupEnd();
             return;
         }
 
-        // Check if the hostname matches any blocked site
-        const isBlocked = this.blockedSites.some(site => {
-            const normalizedSite = site.toLowerCase().replace(/^www\./i, '');
-            const match = (
-                hostname === normalizedSite ||
-                hostname.endsWith(`.${normalizedSite}`)
-            );
-
-            // console.log(`[Blocking] Checking ${hostname} against ${normalizedSite}: ${match}`);
-            return match;
-        });
-
         if (isBlocked) {
-            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url);
+            const blockingMode = this.getBlockingMode();
+            const timerRunning = this.state.isRunning;
+            const currentPhase = this.state.currentPhase;
+            
+            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url) + 
+                "&mode=" + encodeURIComponent(blockingMode) +
+                "&timerRunning=" + encodeURIComponent(timerRunning) +
+                "&phase=" + encodeURIComponent(currentPhase);
             const fullUrl = browser.runtime.getURL(redirectPath);
             // console.log(`[Blocking] Redirecting to: ${fullUrl}`);
 
@@ -1251,23 +1350,26 @@ class PomodoroBackground {
     }
 
     checkAndRefreshBlockedTab(tabId, url) {
-        // Skip if this tab has an active override
-        if (this.state.overrideTabId === tabId && this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
-            return;
-        }
-
-        // Use the new blocking decision logic
-        const blockingMode = this.getBlockingMode();
-        const shouldBlock = this.shouldBlockTab(url, this.state, blockingMode);
-
-        if (!shouldBlock) {
-            return;
-        }
-
         try {
-            // Parse the URL to get the hostname
-            const urlObj = new URL(url);
-            let hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+            // Skip if this tab has an active override
+            if (this.state.overrideTabId === tabId && this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+                return;
+            }
+
+            // Use the new blocking decision logic
+            const blockingMode = this.getBlockingMode();
+            const shouldBlock = this.shouldBlockTab(url, this.state, blockingMode);
+
+            if (!shouldBlock) {
+                return;
+            }
+
+            // Use enhanced URL normalization
+            const hostname = this.normalizeUrl(url);
+            if (!hostname) {
+                console.warn(`[Blocking] Could not normalize URL for tab ${tabId}: ${url}`);
+                return;
+            }
 
             console.log(`[Blocking] Detected navigation to blocked site ${hostname} in tab ${tabId}, refreshing to trigger blocking (mode: ${blockingMode})`);
 
@@ -1275,21 +1377,37 @@ class PomodoroBackground {
             browser.tabs.reload(tabId).then(() => {
                 console.log(`[Blocking] Successfully refreshed tab ${tabId} to block ${hostname}`);
             }).catch(error => {
-                console.error(`[Blocking] Failed to refresh tab ${tabId}:`, error);
+                // Handle tab access failures and invalid tab IDs
+                if (error.message && error.message.includes('No tab with id')) {
+                    console.warn(`[Blocking] Tab ${tabId} no longer exists, skipping refresh`);
+                } else if (error.message && error.message.includes('Cannot access')) {
+                    console.warn(`[Blocking] Cannot access tab ${tabId}, may be a privileged page`);
+                } else {
+                    console.error(`[Blocking] Failed to refresh tab ${tabId}:`, error);
+                    // Retry mechanism for failed force refresh operations
+                    setTimeout(() => {
+                        browser.tabs.reload(tabId).catch(retryError => {
+                            console.error(`[Blocking] Retry failed for tab ${tabId}:`, retryError);
+                        });
+                    }, 1000);
+                }
             });
         } catch (error) {
+            // Add comprehensive error handling for URL parsing and other failures
             console.error(`[Blocking] Error checking blocked site for tab ${tabId}:`, error);
         }
     }
 
     isSameDomainAsOverride(url) {
-    if (!this.state.overrideDomain || !url) {
-        return false;
-    }
+        if (!this.state.overrideDomain || !url) {
+            return false;
+        }
 
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+        const hostname = this.normalizeUrl(url);
+        if (!hostname) {
+            console.warn('[Timer] Could not normalize URL for domain check:', url);
+            return false;
+        }
 
         // Check if it's the same domain or a subdomain
         const isMatch = (
@@ -1299,11 +1417,7 @@ class PomodoroBackground {
 
         console.log(`[Timer] Checking if ${hostname} matches override domain ${this.state.overrideDomain}: ${isMatch}`);
         return isMatch;
-    } catch (error) {
-        console.error('[Timer] Error parsing URL for domain check:', error);
-        return false;
     }
-}
 
     startOverrideExpirationCheck() {
         // Clear any existing expiration check

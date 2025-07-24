@@ -3,6 +3,7 @@ class PomodoroTimer {
         this.initializeElements();
         this.loadSettings();
         this.loadTimerState();
+        this.loadBlockingMode();
         this.setupEventListeners();
         this.updateDisplay();
         this.loadBlockList();
@@ -29,6 +30,7 @@ class PomodoroTimer {
         this.blockedSiteInput = document.getElementById('blockedSiteInput');
         this.addSiteBtn = document.getElementById('addSiteBtn');
         this.blockList = document.getElementById('blockList');
+        this.blockingModeCheckbox = document.getElementById('blockingModeCheckbox');
     }
 
     setupEventListeners() {
@@ -46,6 +48,8 @@ class PomodoroTimer {
                 this.removeBlockedSite(event.target.dataset.site);
             }
         });
+
+        this.blockingModeCheckbox.addEventListener('change', () => this.saveBlockingMode());
     }
 
     loadSettings() {
@@ -58,6 +62,39 @@ class PomodoroTimer {
             this.longBreakTimeInput.value = result.longBreakTime || 15;
             this.sessionsCountInput.value = result.sessionsCount || 4;
             this.autoStartInput.checked = result.autoStart || false;
+        });
+    }
+
+    loadBlockingMode() {
+        browser.storage.local.get('blockingMode').then((result) => {
+            // Default to 'focus-only' mode (checkbox checked)
+            const blockingMode = result.blockingMode || 'focus-only';
+            this.blockingModeCheckbox.checked = (blockingMode === 'focus-only');
+        });
+    }
+
+    saveBlockingMode() {
+        const blockingMode = this.blockingModeCheckbox.checked ? 'focus-only' : 'always';
+        
+        browser.storage.local.set({ blockingMode }).then(() => {
+            // Send message to background script to update blocking behavior immediately
+            browser.runtime.sendMessage({
+                action: 'updateBlockingMode',
+                blockingMode: blockingMode
+            }).then((response) => {
+                if (response && response.success) {
+                    const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
+                    this.showNotification(`Blocking mode updated to: ${modeText}`);
+                } else {
+                    this.showNotification('Error updating blocking mode');
+                }
+            }).catch((error) => {
+                console.error('[Popup] Error sending blocking mode update:', error);
+                this.showNotification('Error updating blocking mode');
+            });
+        }).catch((error) => {
+            console.error('[Popup] Error saving blocking mode to storage:', error);
+            this.showNotification('Error saving blocking mode');
         });
     }
 
