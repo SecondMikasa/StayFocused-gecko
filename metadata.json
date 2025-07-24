@@ -1,0 +1,24 @@
+{
+    "version": {
+        "license": "MPL-2.0"
+    },
+    "categories": {
+        "firefox": [
+            "privacy-security",
+            "tabs",
+            "web-development"
+        ]
+    },
+    "summary": {
+        "en-US": "Stay focused using a Pomodoro timer with site blocking and session tracking."
+    },
+    "description": {
+        "en-US": "Ever caught yourself getting distracted over minimal tasks, let alone ones that really matter? In today's browser-centric world, Stay Focused – Pomodoro Timer helps you reclaim control of your time.\n\n🕒 Overview:\nStay Focused is a minimalist yet powerful Pomodoro timer built for productivity enthusiasts. Intuitive session control, visual progress cues, and smart notifications help reduce context switching and build sustainable focus habits.\n\n✨ Key Features:\n• Customizable Pomodoro cycles (Focus, Short Break, Long Break)\n• Visual session tracking and intelligent reminders\n• Auto-start for seamless transitions\n• Pause and reset for flexible workflows\n• Website blocking during focus mode (COMING SOON!)\n\n🔧 Designed for adaptability:\nWhether you prefer classic 25/5 cycles or your own rhythm, Stay Focused fits your style. Session control gives you the freedom to pause, reset, or auto-roll through your productivity blocks.\n\n📣 Notifications that keep you on track:\nGentle nudges — never distracting — signal when it's time to focus or take a break. Choose between subtle browser indicators and popups.\n\n🎯 Perfect For:\n• Remote workers\n• Students and researchers\n• Developers and creatives\n• Anyone who wants to minimize digital distractions\n\nStay Focused helps you turn good intentions into better habits — one cycle at a time."
+    },
+    "support_email": {
+        "en-US": "kumararnim1@vivaldi.net"
+    },
+    "homepage": {
+        "en-US": "https://arnimfolio.vercel.app/"
+    }
+}
