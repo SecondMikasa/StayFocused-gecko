@@ -324,11 +324,25 @@ class PomodoroTimer {
 
             browser.storage.local.set({ blockedSites }).then(() => {
                 // console.log("[Popup] Successfully removed site");
+                
+                // Force background to reload sites
+                browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
+                    // console.log("[Popup] Background blocklist updated after removal");
+                    this.renderBlockList(blockedSites);
+                    this.showNotification(`Removed ${siteToRemove} from block list`);
+                }).catch(err => {
+                    console.error("[Popup] Error updating background blocklist:", err);
+                    // Still update the UI even if background update fails
+                    this.renderBlockList(blockedSites);
+                    this.showNotification(`Removed ${siteToRemove} from block list`);
+                });
             }).catch(err => {
                 console.error("[Popup] Error saving after removal:", err);
+                this.showNotification('Error removing site from block list');
             });
         }).catch(err => {
             console.error("[Popup] Error retrieving blocked sites for removal:", err);
+            this.showNotification('Error removing site from block list');
         });
     }
 

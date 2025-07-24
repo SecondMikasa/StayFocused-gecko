@@ -705,9 +705,12 @@ class PomodoroBackground {
             }
         }
 
-        // Only block during focus sessions when timer is running
-        if (!this.state.isRunning || this.state.currentPhase !== 'focus') {
-            // console.log("[Blocking] Not in focus session - allowing request");
+        // Use the blocking decision logic that respects the blocking mode
+        const blockingMode = this.getBlockingMode();
+        const shouldBlock = this.shouldBlockTab(details.url, this.state, blockingMode);
+
+        if (!shouldBlock) {
+            // console.log("[Blocking] Should not block based on blocking mode and timer state");
             // console.groupEnd();
             return;
         }
