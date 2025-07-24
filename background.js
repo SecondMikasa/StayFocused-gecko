@@ -22,14 +22,15 @@ class PomodoroBackground {
         browser.storage.local.get([
             'focusTime', 'breakTime', 'longBreakTime', 'sessionsCount',
             'currentSession', 'totalSessions', 'timeLeft', 'currentPhase',
-            'isRunning', 'isPaused', 'autoStart'
+            'isRunning', 'isPaused', 'autoStart', 'blockingMode'
         ]).then(result => {
             this.settings = {
                 focusTime: result.focusTime || 25,
                 breakTime: result.breakTime || 5,
                 longBreakTime: result.longBreakTime || 15,
                 sessionsCount: result.sessionsCount || 4,
-                autoStart: result.autoStart || false
+                autoStart: result.autoStart || false,
+                blockingMode: result.blockingMode || 'focus-only'
             };
             this.state = {
                 currentSession: result.currentSession || 1,
@@ -513,6 +514,10 @@ class PomodoroBackground {
             this.updateBlocking();
             return false;
         }
+    }
+
+    getBlockingMode() {
+        return this.settings?.blockingMode || 'focus-only';
     }
 
     blockingListener(details) {
