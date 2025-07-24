@@ -520,6 +520,59 @@ class PomodoroBackground {
         return this.settings?.blockingMode || 'focus-only';
     }
 
+    shouldBlockTab(url, timerState, blockingMode) {
+        // If no URL provided, don't block
+        if (!url) {
+            return false;
+        }
+
+        // If no blocked sites configured, don't block
+        if (!this.blockedSites || this.blockedSites.length === 0) {
+            return false;
+        }
+
+        // Check if URL matches any blocked site
+        let isUrlBlocked = false;
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+
+            isUrlBlocked = this.blockedSites.some(site => {
+                const normalizedSite = site.toLowerCase().replace(/^www\./i, '');
+                return (
+                    hostname === normalizedSite ||
+                    hostname.endsWith(`.${normalizedSite}`)
+                );
+            });
+        } catch (error) {
+            console.error('[Blocking] Error parsing URL for blocking decision:', error);
+            return false;
+        }
+
+        // If URL is not in blocked list, don't block
+        if (!isUrlBlocked) {
+            return false;
+        }
+
+        // Apply blocking decision matrix based on timer state and blocking mode
+        const isTimerRunning = timerState?.isRunning || false;
+        const currentPhase = timerState?.currentPhase || 'focus';
+
+        switch (blockingMode) {
+            case 'focus-only':
+                // Only block during active focus sessions
+                return isTimerRunning && currentPhase === 'focus';
+
+            case 'always':
+                // Block at all times if URL is in blocked list
+                return true;
+
+            default:
+                // Default to focus-only behavior
+                return isTimerRunning && currentPhase === 'focus';
+        }
+    }
+
     blockingListener(details) {
         // console.groupCollapsed(`[Blocking] Request to: ${details.url}`);
         // console.log("Request details:", details);
@@ -626,24 +679,42 @@ class PomodoroBackground {
             return;
         }
 
+        const blockingMode = this.getBlockingMode();
+
         // console.log(`[Blocking] Update conditions: 
         // isRunning: ${this.state.isRunning},
         // currentPhase: ${this.state.currentPhase},
+        // blockingMode: ${blockingMode},
         // blockedSites count: ${this.blockedSites.length}`);
 
-        const shouldBlock = (
-            this.state.isRunning &&
-            this.state.currentPhase === 'focus' &&
-            this.blockedSites.length > 0
-        );
+        let shouldBlock = false;
 
-        // console.log(`[Blocking] Should block: ${shouldBlock}`);
+        if (this.blockedSites.length > 0) {
+            switch (blockingMode) {
+                case 'focus-only':
+                    // Only block during active focus sessions
+                    shouldBlock = this.state.isRunning && this.state.currentPhase === 'focus';
+                    break;
+
+                case 'always':
+                    // Block at all times when sites are configured
+                    shouldBlock = true;
+                    break;
+
+                default:
+                    // Default to focus-only behavior
+                    shouldBlock = this.state.isRunning && this.state.currentPhase === 'focus';
+                    break;
+            }
+        }
+
+        // console.log(`[Blocking] Should block: ${shouldBlock} (mode: ${blockingMode})`);
 
         if (shouldBlock) {
-            // console.log("[Blocking] Enabling blocking (focus session with blocked sites)");
+            // console.log("[Blocking] Enabling blocking");
             this.enableBlocking();
         } else {
-            // console.log("[Blocking] Disabling blocking (not in focus or no sites)");
+            // console.log("[Blocking] Disabling blocking");
             this.disableBlocking();
         }
     }
@@ -1087,7 +1158,7 @@ class PomodoroBackground {
         try {
             console.log(`[Timer] Timer expired - blocking access and refreshing tab ${tabId}`);
 
-            // First, reset the temporary access state (Requirement 3.3)
+            // First, reset the temporary access state
             delete this.state.overrideUntil;
             delete this.state.overrideTabId;
             delete this.state.overrideStartTime;
@@ -1098,10 +1169,10 @@ class PomodoroBackground {
             // Clear the expiration check alarm since override is now expired
             browser.alarms.clear('overrideExpirationCheck');
 
-            // Update blocking to ensure immediate blocking (Requirement 3.1)
+            // Update blocking to ensure immediate blocking 
             this.updateBlocking();
 
-            // Force refresh the current page to show blocked page (Requirement 3.2)
+            // Force refresh the current page to show blocked page 
             await browser.tabs.reload(tabId);
 
             console.log(`[Timer] Successfully refreshed tab ${tabId} after timer expiration - access now blocked`);
@@ -1111,7 +1182,7 @@ class PomodoroBackground {
         } catch (error) {
             console.error(`[Timer] Failed to refresh tab ${tabId}:`, error);
 
-            // Even if refresh fails, ensure override state is reset (Requirement 3.3)
+            // Even if refresh fails, ensure override state is reset
             delete this.state.overrideUntil;
             delete this.state.overrideTabId;
             delete this.state.overrideStartTime;
@@ -1137,7 +1208,7 @@ class PomodoroBackground {
         try {
             // Store breathing exercise interaction data
             console.log('[BreathingExercise] Tracking interaction:', interaction);
-            
+
             // Get existing breathing exercise data from storage
             browser.storage.local.get(['breathingExerciseStats']).then(result => {
                 const stats = result.breathingExerciseStats || {
@@ -1146,25 +1217,25 @@ class PomodoroBackground {
                     totalTime: 0,
                     interactions: []
                 };
-                
+
                 // Add new interaction
                 stats.interactions.push(interaction);
-                
+
                 // Update aggregated stats if this is a completed session
                 if (interaction.action === 'breathing_exercise_completed') {
                     stats.totalSessions++;
                     stats.totalBreaths += interaction.data.breaths || 0;
                     stats.totalTime += interaction.data.duration || 0;
                 }
-                
+
                 // Keep only last 100 interactions to prevent storage bloat
                 if (stats.interactions.length > 100) {
                     stats.interactions.splice(0, stats.interactions.length - 100);
                 }
-                
+
                 // Save updated stats
                 browser.storage.local.set({ breathingExerciseStats: stats });
-                
+
                 console.log('[BreathingExercise] Updated stats:', {
                     totalSessions: stats.totalSessions,
                     totalBreaths: stats.totalBreaths,
@@ -1173,25 +1244,23 @@ class PomodoroBackground {
             }).catch(error => {
                 console.warn('[BreathingExercise] Could not save interaction data:', error);
             });
-            
+
         } catch (error) {
             console.warn('[BreathingExercise] Error tracking interaction:', error);
         }
     }
 
     checkAndRefreshBlockedTab(tabId, url) {
-        // Only check during focus mode when timer is running (Requirement 1.1)
-        if (!this.state.isRunning || this.state.currentPhase !== 'focus') {
-            return;
-        }
-
-        // Skip if there are no blocked sites configured
-        if (!this.blockedSites || this.blockedSites.length === 0) {
-            return;
-        }
-
         // Skip if this tab has an active override
         if (this.state.overrideTabId === tabId && this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+            return;
+        }
+
+        // Use the new blocking decision logic
+        const blockingMode = this.getBlockingMode();
+        const shouldBlock = this.shouldBlockTab(url, this.state, blockingMode);
+
+        if (!shouldBlock) {
             return;
         }
 
@@ -1200,52 +1269,41 @@ class PomodoroBackground {
             const urlObj = new URL(url);
             let hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
 
-            // Check if the hostname matches any blocked site (Requirement 1.2)
-            const isBlocked = this.blockedSites.some(site => {
-                const normalizedSite = site.toLowerCase().replace(/^www\./i, '');
-                return (
-                    hostname === normalizedSite ||
-                    hostname.endsWith(`.${normalizedSite}`)
-                );
+            console.log(`[Blocking] Detected navigation to blocked site ${hostname} in tab ${tabId}, refreshing to trigger blocking (mode: ${blockingMode})`);
+
+            // Refresh the tab to trigger the blocking mechanism 
+            browser.tabs.reload(tabId).then(() => {
+                console.log(`[Blocking] Successfully refreshed tab ${tabId} to block ${hostname}`);
+            }).catch(error => {
+                console.error(`[Blocking] Failed to refresh tab ${tabId}:`, error);
             });
-
-            if (isBlocked) {
-                console.log(`[Blocking] Detected navigation to blocked site ${hostname} in tab ${tabId}, refreshing to trigger blocking`);
-
-                // Refresh the tab to trigger the blocking mechanism (Requirement 1.3)
-                browser.tabs.reload(tabId).then(() => {
-                    console.log(`[Blocking] Successfully refreshed tab ${tabId} to block ${hostname}`);
-                }).catch(error => {
-                    console.error(`[Blocking] Failed to refresh tab ${tabId}:`, error);
-                });
-            }
         } catch (error) {
             console.error(`[Blocking] Error checking blocked site for tab ${tabId}:`, error);
         }
     }
 
     isSameDomainAsOverride(url) {
-        if (!this.state.overrideDomain || !url) {
-            return false;
-        }
-
-        try {
-            const urlObj = new URL(url);
-            const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
-
-            // Check if it's the same domain or a subdomain
-            const isMatch = (
-                hostname === this.state.overrideDomain ||
-                hostname.endsWith(`.${this.state.overrideDomain}`)
-            );
-
-            console.log(`[Timer] Checking if ${hostname} matches override domain ${this.state.overrideDomain}: ${isMatch}`);
-            return isMatch;
-        } catch (error) {
-            console.error('[Timer] Error parsing URL for domain check:', error);
-            return false;
-        }
+    if (!this.state.overrideDomain || !url) {
+        return false;
     }
+
+    try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+
+        // Check if it's the same domain or a subdomain
+        const isMatch = (
+            hostname === this.state.overrideDomain ||
+            hostname.endsWith(`.${this.state.overrideDomain}`)
+        );
+
+        console.log(`[Timer] Checking if ${hostname} matches override domain ${this.state.overrideDomain}: ${isMatch}`);
+        return isMatch;
+    } catch (error) {
+        console.error('[Timer] Error parsing URL for domain check:', error);
+        return false;
+    }
+}
 
     startOverrideExpirationCheck() {
         // Clear any existing expiration check
@@ -1280,8 +1338,6 @@ class PomodoroBackground {
             browser.alarms.clear('overrideExpirationCheck');
         }
     }
-
-
 }
 
 new PomodoroBackground();
