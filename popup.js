@@ -75,7 +75,7 @@ class PomodoroTimer {
 
     saveBlockingMode() {
         const blockingMode = this.blockingModeCheckbox.checked ? 'focus-only' : 'always';
-        
+
         browser.storage.local.set({ blockingMode }).then(() => {
             // Send message to background script to update blocking behavior immediately
             browser.runtime.sendMessage({
@@ -324,7 +324,7 @@ class PomodoroTimer {
 
             browser.storage.local.set({ blockedSites }).then(() => {
                 // console.log("[Popup] Successfully removed site");
-                
+
                 // Force background to reload sites
                 browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
                     // console.log("[Popup] Background blocklist updated after removal");
@@ -347,7 +347,8 @@ class PomodoroTimer {
     }
 
     renderBlockList(sites) {
-        this.blockList.innerHTML = ''; // Clear the current list
+        this.blockList.replaceChildren();
+        // Clear the current list safely;
         if (!sites || sites.length === 0) {
             this.blockList.innerHTML = '<p class="blocker-info">No sites blocked yet.</p>';
             return;

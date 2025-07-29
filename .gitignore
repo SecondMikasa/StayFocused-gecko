@@ -6,3 +6,5 @@ node_modules/
 test-blocking-logic.js
 test-runner.html
 verify-blocking-logic.js
+
+.amo-upload-uuid
