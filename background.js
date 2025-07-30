@@ -603,39 +603,30 @@ class PomodoroBackground {
         if (!url || !blockedSites || !Array.isArray(blockedSites) || blockedSites.length === 0) {
             return false;
         }
+        try {
+            const urlObj = new URL(url);
+            return blockedSites.some(site => {
+                if (!site || typeof site !== 'string') return false;
+                
+                const [siteDomain, ...sitePathParts] = site.split('/');
 
-        const normalizedHostname = this.normalizeUrl(url);
-        if (!normalizedHostname) {
+                const sitePath = sitePathParts.length ? '/' + sitePathParts.join('/') : '';
+
+                // Normalize domain (remove www.)
+                const urlHost = urlObj.hostname.replace(/^www\./i, '');
+
+                const siteHost = siteDomain.replace(/^www\./i, '');
+
+                // Match domain
+                if (!urlHost.endsWith(siteHost)) return false;
+                
+                // If a path is specified, match the start of the pathname
+                if (sitePath && !urlObj.pathname.startsWith(sitePath)) return false;
+                return true;
+            });
+        } catch (e) {
             return false;
         }
-
-        return blockedSites.some(site => {
-            if (!site || typeof site !== 'string') {
-                return false;
-            }
-
-            const normalizedSite = this.normalizeUrl(site);
-            if (!normalizedSite) {
-                return false;
-            }
-
-            // Exact match
-            if (normalizedHostname === normalizedSite) {
-                return true;
-            }
-
-            // Subdomain match - ensure we're matching full domain components
-            // e.g., facebook.com should match www.facebook.com and sub.facebook.com
-            // but not fakefacebook.com
-            if (normalizedHostname.endsWith(`.${normalizedSite}`)) {
-                return true;
-            }
-
-            // Handle case where blocked site includes subdomain
-            // e.g., if blocked site is "sub.facebook.com", it should match exactly
-            // but not match "facebook.com"
-            return false;
-        });
     }
 
     // Extract domain from URL for blocking (enhanced version)

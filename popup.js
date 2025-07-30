@@ -261,46 +261,25 @@ class PomodoroTimer {
 
     addBlockedSite() {
         const input = this.blockedSiteInput.value.trim();
-        // console.log("[Popup] Adding blocked site:", input);
-
-        if (!input) {
-            // console.log("[Popup] Empty input - ignoring");
-            return;
-        }
+        if (!input) return;
 
         let site;
         try {
-            // If input looks like a URL, extract hostname
-            if (input.startsWith('http://') || input.startsWith('https://')) {
-                site = new URL(input).hostname.replace(/^www\./, '');
-            } else if (input.includes('/')) {
-                // If it has a path but no protocol, add https://
-                site = new URL('https://' + input).hostname.replace(/^www\./, '');
-            } else {
-                // Just a domain name
-                site = input.replace(/^www\./, '');
-            }
+            // Remove protocol if present, but keep path
+            site = input.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+            // Remove trailing slash for consistency
+            if (site.endsWith('/')) site = site.slice(0, -1);
         } catch (e) {
-            // If URL parsing fails, treat as domain name
-            site = input.replace(/^www\./, '');
+            site = input.replace(/^www\./i, '');
         }
 
         if (site) {
-            // console.log(`[Popup] Processed site to block: ${site}`);
             browser.storage.local.get('blockedSites').then(result => {
                 const blockedSites = result.blockedSites || [];
-                // console.log("[Popup] Current blocked sites:", blockedSites);
-
                 if (!blockedSites.includes(site)) {
                     blockedSites.push(site);
-                    // console.log("[Popup] Updated blocked sites:", blockedSites);
-
                     browser.storage.local.set({ blockedSites }).then(() => {
-                        // console.log("[Popup] Successfully saved blocked sites");
-
-                        // Force background to reload sites
                         browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
-                            // console.log("[Popup] Background blocklist updated");
                             this.renderBlockList(blockedSites);
                             this.blockedSiteInput.value = '';
                             this.showNotification(`Added ${site} to block list`);
