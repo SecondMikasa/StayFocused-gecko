@@ -327,19 +327,29 @@ class PomodoroTimer {
 
     renderBlockList(sites) {
         this.blockList.replaceChildren();
-        // Clear the current list safely;
         if (!sites || sites.length === 0) {
-            this.blockList.innerHTML = '<p class="blocker-info">No sites blocked yet.</p>';
+            const p = document.createElement('p');
+            p.className = 'blocker-info';
+            p.textContent = 'No sites blocked yet.';
+            this.blockList.appendChild(p);
             return;
         }
 
         sites.forEach(site => {
             const div = document.createElement('div');
             div.className = 'blocked-site';
-            div.innerHTML = `
-                <span>${site}</span>
-                <button class="remove-site-btn" data-site="${site}" title="Remove ${site}">×</button>
-            `;
+
+            const span = document.createElement('span');
+            span.textContent = site;
+
+            const btn = document.createElement('button');
+            btn.className = 'remove-site-btn';
+            btn.setAttribute('data-site', site);
+            btn.setAttribute('title', `Remove ${site}`);
+            btn.textContent = '×';
+
+            div.appendChild(span);
+            div.appendChild(btn);
             this.blockList.appendChild(div);
         });
     }
