@@ -8,22 +8,42 @@ class PomodoroBackground {
         // Initialize error handling state
         this.fallbackNotificationInterval = null;
         this.extensionStartupTime = Date.now();
+        this.isInitialized = false;
 
-        this.initializeTimer();
-        this.setupMessageListener();
-        this.setupAlarmListener();
-        this.setupNavigationListener();
-        this.setupExtensionLifecycleHandlers();
-        this.loadBlockedSites();
-        this.performStartupCleanup();
+        // Initialize everything properly with async handling
+        this.initialize();
     }
 
-    initializeTimer() {
-        browser.storage.local.get([
-            'focusTime', 'breakTime', 'longBreakTime', 'sessionsCount',
-            'currentSession', 'totalSessions', 'timeLeft', 'currentPhase',
-            'isRunning', 'isPaused', 'autoStart', 'blockingMode'
-        ]).then(result => {
+    async initialize() {
+        try {
+            // console.log("[Background] Starting initialization...");
+            await this.initializeTimer();
+            this.setupMessageListener();
+            this.setupAlarmListener();
+            this.setupNavigationListener();
+            this.setupExtensionLifecycleHandlers();
+            await this.loadBlockedSites(); // Wait for blocked sites to load
+            await this.performStartupCleanup();
+            this.isInitialized = true;
+            // console.log("[Background] Background script initialized successfully");
+            
+            // Set up periodic check for Firefox Android
+            this.setupPeriodicBlockingCheck();
+        } catch (error) {
+            console.error("[Background] Error during initialization:", error);
+            // Retry initialization after a delay
+            setTimeout(() => this.initialize(), 2000);
+        }
+    }
+
+    async initializeTimer() {
+        try {
+            const result = await browser.storage.local.get([
+                'focusTime', 'breakTime', 'longBreakTime', 'sessionsCount',
+                'currentSession', 'totalSessions', 'timeLeft', 'currentPhase',
+                'isRunning', 'isPaused', 'autoStart', 'blockingMode'
+            ])
+            
             this.settings = {
                 focusTime: result.focusTime || 25,
                 breakTime: result.breakTime || 5,
@@ -40,9 +60,13 @@ class PomodoroBackground {
                 isRunning: result.isRunning || false,
                 isPaused: result.isPaused || false
             };
-            this.saveState();
-            this.updateBlocking();
-        });
+            
+            await this.saveState();
+            console.log("[Background] Timer state initialized:", this.state);
+        } catch (error) {
+            console.error("[Background] Error initializing timer:", error);
+            throw error;
+        }
     }
 
     setupMessageListener() {
@@ -373,6 +397,29 @@ class PomodoroBackground {
                 }
             });
         });
+    }
+
+    setupPeriodicBlockingCheck() {
+        // Helps catch cases wherein webRequest listeners are lost after browser restarting
+        setInterval(() => {
+            if (this.isInitialized && this.state && this.blockedSites) {
+                // console.log("[Blocking] Periodic check - verifying blocking state");
+                
+                const blockingMode = this.getBlockingMode();
+                // console.log(`[Blocking] Periodic check - mode: ${blockingMode}, sites: ${this.blockedSites.length}`);
+                
+                // For "always" mode, ensure blocking is active if we have blocked sites
+                if (blockingMode === 'always' && this.blockedSites.length > 0) {
+                    const hasListener = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
+                    // console.log(`[Blocking] Periodic check - listener active: ${hasListener}`);
+                    
+                    if (!hasListener) {
+                        // console.warn("[Blocking] Periodic check detected missing listener, re-enabling blocking");
+                        this.enableBlocking();
+                    }
+                }
+            }
+        }, 30000)
     }
 
     async performStartupCleanup() {
@@ -767,6 +814,10 @@ class PomodoroBackground {
     }
 
     updateBlocking() {
+        console.log("[Blocking] updateBlocking called");
+        console.log("[Blocking] State:", this.state ? "initialized" : "not initialized");
+        console.log("[Blocking] Blocked sites:", this.blockedSites ? this.blockedSites.length : "not loaded");
+        
         if (!this.state || !this.blockedSites) {
             // console.warn("[Blocking] Cannot update blocking - state or sites not initialized");
             return;
@@ -986,11 +1037,17 @@ class PomodoroBackground {
         }
     }
 
-    saveState() {
-        browser.storage.local.set({
-            ...this.state,
-            ...this.settings
-        });
+    async saveState() {
+        try {
+            await browser.storage.local.set({
+                ...this.state,
+                ...this.settings,
+                lastSaved: Date.now() 
+            });
+            console.log('[Background] State saved successfully');
+        } catch (error) {
+            console.error('[Background] Error saving state:', error);
+        }
     }
 
     async injectFloatingTimer(tabId, timeRemaining, retryCount = 0) {
