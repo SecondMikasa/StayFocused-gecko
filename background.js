@@ -26,7 +26,7 @@ class PomodoroBackground {
             await this.performStartupCleanup();
             this.isInitialized = true;
             // console.log("[Background] Background script initialized successfully");
-            
+
             // Set up periodic check for Firefox Android
             this.setupPeriodicBlockingCheck();
         } catch (error) {
@@ -43,7 +43,7 @@ class PomodoroBackground {
                 'currentSession', 'totalSessions', 'timeLeft', 'currentPhase',
                 'isRunning', 'isPaused', 'autoStart', 'blockingMode'
             ])
-            
+
             this.settings = {
                 focusTime: result.focusTime || 25,
                 breakTime: result.breakTime || 5,
@@ -60,7 +60,7 @@ class PomodoroBackground {
                 isRunning: result.isRunning || false,
                 isPaused: result.isPaused || false
             };
-            
+
             await this.saveState();
             console.log("[Background] Timer state initialized:", this.state);
         } catch (error) {
@@ -115,37 +115,65 @@ class PomodoroBackground {
                     });
                     break;
                 case 'overrideBlock':
-                    this.state.overrideUntil = Date.now() + 60000;
-                    this.state.overrideTabId = request.tabId;
-                    this.state.overrideStartTime = Date.now();
-                    this.state.overrideDuration = 60000; // 60 seconds in milliseconds
+                    // Handle override block request asynchronously
+                    (async () => {
+                        try {
+                            const result = await browser.storage.local.get('overrideTime');
+                            const overrideMinutes = result.overrideTime || 1; // Default to 1 minute
+                            const overrideDurationMs = overrideMinutes * 60 * 1000; // Convert to milliseconds
 
-                    // Store the domain that has temporary access for cross-domain navigation handling
-                    if (request.originalUrl) {
-                        const domain = this.normalizeUrl(request.originalUrl);
-                        if (domain) {
-                            this.state.overrideDomain = domain;
-                            console.log(`[Timer] Override granted for domain: ${this.state.overrideDomain}`);
-                        } else {
-                            console.error('[Timer] Failed to normalize override URL:', request.originalUrl);
+                            this.state.overrideUntil = Date.now() + overrideDurationMs;
+                            this.state.overrideTabId = request.tabId;
+                            this.state.overrideStartTime = Date.now();
+                            this.state.overrideDuration = overrideDurationMs;
+
+                            // Store the domain that has temporary access for cross-domain navigation handling
+                            if (request.originalUrl) {
+                                const domain = this.normalizeUrl(request.originalUrl);
+                                if (domain) {
+                                    this.state.overrideDomain = domain;
+                                    console.log(`[Timer] Override granted for domain: ${this.state.overrideDomain}`);
+                                } else {
+                                    console.error('[Timer] Failed to normalize override URL:', request.originalUrl);
+                                }
+                            }
+
+                            await this.saveState();
+
+                            // Show start notification with dynamic time
+                            const timeText = overrideMinutes === 1 ? '1 minute' : `${overrideMinutes} minutes`;
+                            this.showOverrideNotification('start', `Temporary access granted for ${timeText}`);
+
+                            // Start periodic timer expiration check
+                            this.startOverrideExpirationCheck();
+
+                            // Inject floating timer into the active tab
+                            if (request.tabId) {
+                                this.injectFloatingTimer(request.tabId, overrideMinutes * 60); // Convert to seconds
+                            }
+
+                            sendResponse({ success: true });
+                        } catch (error) {
+                            console.error('[Timer] Error getting override time:', error);
+                            // Fallback to 1 minute
+                            const overrideDurationMs = 60000;
+                            this.state.overrideUntil = Date.now() + overrideDurationMs;
+                            this.state.overrideTabId = request.tabId;
+                            this.state.overrideStartTime = Date.now();
+                            this.state.overrideDuration = overrideDurationMs;
+
+                            await this.saveState();
+                            this.showOverrideNotification('start', 'Temporary access granted for 1 minute');
+                            this.startOverrideExpirationCheck();
+
+                            if (request.tabId) {
+                                this.injectFloatingTimer(request.tabId, 60);
+                            }
+
+                            sendResponse({ success: true });
                         }
-                    }
-
-                    this.saveState();
-
-                    // Show start notification only
-                    this.showOverrideNotification('start', 'Temporary access granted for 1 minute');
-
-                    // Start periodic timer expiration check
-                    this.startOverrideExpirationCheck();
-
-                    // Inject floating timer into the active tab
-                    if (request.tabId) {
-                        this.injectFloatingTimer(request.tabId, 60);
-                    }
-
-                    sendResponse({ success: true });
-                    break;
+                    })();
+                    return true; // Keep the message channel open for async response
                 case 'trackBreathingInteraction':
                     this.trackBreathingInteraction(request.interaction);
                     sendResponse({ success: true });
@@ -234,8 +262,14 @@ class PomodoroBackground {
         // Listen for tab removal to clean up override state
         browser.tabs.onRemoved.addListener((tabId, _removeInfo) => {
             try {
-                console.log(`[Timer] Tab ${tabId} closed, cleaning up override state`);
-                this.cleanupOverrideForTab(tabId);
+                console.log(`[Timer] Tab ${tabId} closed`);
+                // Only clean up override if this was the original override tab AND no other tabs exist for the same domain
+                if (this.state.overrideTabId === tabId) {
+                    console.log(`[Timer] Original override tab closed, but keeping override active for domain: ${this.state.overrideDomain}`);
+                    // Clear the specific tab ID but keep the domain override active
+                    delete this.state.overrideTabId;
+                    this.saveState();
+                }
             } catch (error) {
                 console.error(`[Timer] Error handling tab removal for tab ${tabId}:`, error);
             }
@@ -244,8 +278,12 @@ class PomodoroBackground {
         // Listen for window close events
         browser.windows.onRemoved.addListener((windowId) => {
             try {
-                console.log(`[Timer] Window ${windowId} closed, checking for override cleanup`);
-                this.cleanupOverrideForWindow(windowId);
+                console.log(`[Timer] Window ${windowId} closed`);
+                // Only clean up override if this was the last window and override is still active
+                if (this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+                    console.log(`[Timer] Window closed but override still active for domain: ${this.state.overrideDomain}`);
+                    // Keep the override active - user might open a new window/tab
+                }
             } catch (error) {
                 console.error(`[Timer] Error handling window removal for window ${windowId}:`, error);
             }
@@ -404,15 +442,15 @@ class PomodoroBackground {
         setInterval(() => {
             if (this.isInitialized && this.state && this.blockedSites) {
                 // console.log("[Blocking] Periodic check - verifying blocking state");
-                
+
                 const blockingMode = this.getBlockingMode();
                 // console.log(`[Blocking] Periodic check - mode: ${blockingMode}, sites: ${this.blockedSites.length}`);
-                
+
                 // For "always" mode, ensure blocking is active if we have blocked sites
                 if (blockingMode === 'always' && this.blockedSites.length > 0) {
                     const hasListener = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
                     // console.log(`[Blocking] Periodic check - listener active: ${hasListener}`);
-                    
+
                     if (!hasListener) {
                         // console.warn("[Blocking] Periodic check detected missing listener, re-enabling blocking");
                         this.enableBlocking();
@@ -525,14 +563,15 @@ class PomodoroBackground {
     handleTabNavigation(tabId, newUrl) {
         // Check if this is the override tab
         if (this.state.overrideTabId === tabId) {
-            // If navigating to a non-injectable URL, clean up override
+            // If navigating to a non-injectable URL, just clear the tab ID but keep domain override
             if (!this.isInjectableUrl(newUrl)) {
-                console.log(`[Timer] Navigation to non-injectable URL ${newUrl}, cleaning up override`);
-                this.cleanupOverrideForTab(tabId);
+                console.log(`[Timer] Navigation to non-injectable URL ${newUrl}, clearing tab ID but keeping domain override`);
+                delete this.state.overrideTabId;
+                this.saveState();
                 return;
             }
 
-            // If navigating away from override domain, clean up
+            // If navigating away from override domain, clean up override completely
             if (!this.isSameDomainAsOverride(newUrl)) {
                 console.log(`[Timer] Navigation away from override domain, cleaning up override`);
                 this.cleanupOverrideForTab(tabId);
@@ -591,7 +630,7 @@ class PomodoroBackground {
             this.settings = {};
         }
         this.settings.blockingMode = newBlockingMode;
-        
+
         // Save to storage
         browser.storage.local.set({ blockingMode: newBlockingMode }).then(() => {
             console.log(`[Blocking] Blocking mode updated to: ${newBlockingMode}`);
@@ -616,10 +655,10 @@ class PomodoroBackground {
             }
 
             const urlObj = new URL(normalizedUrl);
-            
+
             // Extract hostname and normalize
             let hostname = urlObj.hostname;
-            
+
             // Handle special characters and internationalized domain names
             try {
                 // Convert to ASCII if possible (handles IDN domains)
@@ -631,7 +670,7 @@ class PomodoroBackground {
 
             // Remove www. prefix for consistent matching
             hostname = hostname.replace(/^www\./i, '');
-            
+
             // Handle edge case of empty hostname after www removal
             if (!hostname) {
                 return null;
@@ -654,7 +693,7 @@ class PomodoroBackground {
             const urlObj = new URL(url);
             return blockedSites.some(site => {
                 if (!site || typeof site !== 'string') return false;
-                
+
                 const [siteDomain, ...sitePathParts] = site.split('/');
 
                 const sitePath = sitePathParts.length ? '/' + sitePathParts.join('/') : '';
@@ -666,7 +705,7 @@ class PomodoroBackground {
 
                 // Match domain
                 if (!urlHost.endsWith(siteHost)) return false;
-                
+
                 // If a path is specified, match the start of the pathname
                 if (sitePath && !urlObj.pathname.startsWith(sitePath)) return false;
                 return true;
@@ -756,7 +795,7 @@ class PomodoroBackground {
         // Use enhanced URL matching logic
         const isBlocked = this.isUrlBlocked(details.url, this.blockedSites);
         const hostname = this.normalizeUrl(details.url);
-        
+
         if (!hostname && isBlocked) {
             console.warn("[Blocking] Could not normalize URL but marked as blocked:", details.url);
             // console.groupEnd();
@@ -767,8 +806,8 @@ class PomodoroBackground {
             const blockingMode = this.getBlockingMode();
             const timerRunning = this.state.isRunning;
             const currentPhase = this.state.currentPhase;
-            
-            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url) + 
+
+            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url) +
                 "&mode=" + encodeURIComponent(blockingMode) +
                 "&timerRunning=" + encodeURIComponent(timerRunning) +
                 "&phase=" + encodeURIComponent(currentPhase);
@@ -817,7 +856,7 @@ class PomodoroBackground {
         console.log("[Blocking] updateBlocking called");
         console.log("[Blocking] State:", this.state ? "initialized" : "not initialized");
         console.log("[Blocking] Blocked sites:", this.blockedSites ? this.blockedSites.length : "not loaded");
-        
+
         if (!this.state || !this.blockedSites) {
             // console.warn("[Blocking] Cannot update blocking - state or sites not initialized");
             return;
@@ -1042,7 +1081,7 @@ class PomodoroBackground {
             await browser.storage.local.set({
                 ...this.state,
                 ...this.settings,
-                lastSaved: Date.now() 
+                lastSaved: Date.now()
             });
             console.log('[Background] State saved successfully');
         } catch (error) {
@@ -1404,6 +1443,21 @@ class PomodoroBackground {
         try {
             // Skip if this tab has an active override
             if (this.state.overrideTabId === tabId && this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+                return;
+            }
+
+            // Skip if there's an active override for the same domain (for duplicate tabs)
+            if (this.state.overrideUntil && Date.now() < this.state.overrideUntil && this.isSameDomainAsOverride(url)) {
+                console.log(`[Blocking] Skipping block for tab ${tabId} - same domain as active override`);
+                
+                // Inject floating timer for this duplicate tab
+                const elapsed = Date.now() - this.state.overrideStartTime;
+                const timeRemaining = Math.max(0, Math.ceil((this.state.overrideDuration - elapsed) / 1000));
+                
+                if (timeRemaining > 0) {
+                    console.log(`[Timer] Injecting timer for duplicate tab ${tabId} with ${timeRemaining}s remaining`);
+                    this.injectFloatingTimer(tabId, timeRemaining);
+                }
                 return;
             }
 

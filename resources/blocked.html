@@ -4,61 +4,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stay Focused - Focus Mode Active</title>
+    <title>Stay Focused - Website Blocked</title>
     <link rel="stylesheet" href="blocked.css">
-    <meta name="description" content="Focus mode is active. Take a moment to refocus on your goals.">
+    <meta name="description" content="This website is blocked to help you stay focused.">
 </head>
 
 <body>
-    <div class="floating-elements">
-        <div class="floating-icon">🌟</div>
-        <div class="floating-icon">✨</div>
-        <div class="floating-icon">🎯</div>
-        <div class="floating-icon">💫</div>
-        <div class="floating-icon">🌸</div>
-    </div>
-    
-    <!-- Focus time tracker -->
-    <div class="focus-tracker">
-        <div class="focus-time" id="focusTime">0:00</div>
-        <div class="focus-streak">Time on this page</div>
-    </div>
-
-    <main class="container sparkle-container" role="main">
-        <header>
-            <h1><span class="animated-icon bounce">🎯</span> Stay Focused!</h1>
+    <div class="container">
+        <div class="header-section">
+            <h1>🎯 Stay Focused!</h1>
             <p class="subtitle">This website is on your distraction list.</p>
+            
             <div class="blocking-reason" id="blockingReason">
-                <p id="focusModeMessage" class="mode-message" style="display: none;">
+                <div id="focusModeMessage" class="mode-message" style="display: none;">
                     <span class="mode-icon">⏰</span> Blocked during focus session
-                </p>
-                <p id="alwaysModeMessage" class="mode-message" style="display: none;">
+                </div>
+                <div id="alwaysModeMessage" class="mode-message" style="display: none;">
                     <span class="mode-icon">🚫</span> Always blocked
-                </p>
+                </div>
             </div>
-        </header>
+        </div>
         
-        <section class="quote-container hover-lift" role="complementary" aria-label="Motivational quote">
-            <blockquote>
-                <p id="quote">"The secret of getting ahead is getting started."</p>
-                <cite id="author">- Mark Twain</cite>
-            </blockquote>
-        </section>
+        <div class="content-section">
+            <div class="quote-container">
+                <blockquote>
+                    <p id="quote">"The secret of getting ahead is getting started."</p>
+                    <cite id="author">- Mark Twain</cite>
+                </blockquote>
+            </div>
+            
+            <div class="actions">
+                <button id="overrideBtn" type="button" class="btn btn-override">
+                    🔓 I really need to access this (1 min)
+                </button>
+            </div>
+        </div>
         
-        <section class="actions" role="region" aria-label="Override options">
-            <button id="overrideBtn" type="button" class="interactive-element hover-lift" aria-describedby="override-description">
-                <span class="animated-icon wiggle">🔓</span> I really need to access this (1 min)
-            </button>
-            <p id="override-description" class="sr-only">
-                Grants temporary access to the blocked website for 1 minute
-            </p>
-        </section>
-    </main>
-    
-    <footer class="url-display" role="contentinfo">
-        <span>You tried to access: </span>
-        <span id="blockedUrl" class="blocked-url"></span>
-    </footer>
+        <div class="footer-section">
+            <span>You tried to access: </span>
+            <span id="blockedUrl" class="blocked-url"></span>
+        </div>
+    </div>
     
     <script src="blocked.js"></script>
 </body>

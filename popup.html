@@ -1,95 +1,113 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pomodoro Timer</title>
+    <title>Stay Focused - Pomodoro Timer</title>
     <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎯 Stay Focused</h1>
-        </div>
-        
-        <div class="timer-display">
+    <div class="popup-container">
+        <!-- Header with timer display -->
+        <div class="header-section">
+            <div class="app-title">🎯 Stay Focused</div>
             <div class="time-left" id="timeDisplay">25:00</div>
             <div class="session-info" id="sessionInfo">Session 1 of 4</div>
             <div class="status" id="statusDisplay">Ready to start</div>
         </div>
-        
-        <div class="controls">
+
+        <!-- Controls -->
+        <div class="controls-section">
             <button id="startBtn" class="btn btn-primary">Start</button>
             <button id="pauseBtn" class="btn btn-secondary" disabled>Pause</button>
             <button id="resetBtn" class="btn btn-danger">Reset</button>
         </div>
-        
-        <div class="settings">
-            <h3>Settings</h3>
 
-            <div class="setting-group">
-                <label for="focusTime">Focus Time (minutes):</label>
-                <input type="number" id="focusTime" min="1" max="120" value="25">
+        <div class="section-container">
+            <!-- Quick Settings -->
+            <div class="section">
+                <div class="section-header" data-section="settings">
+                    <span class="section-icon">⚙️</span>
+                    <span>Settings</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="section-content" id="settings-content">
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="focusTime">Focus</label>
+                            <input type="number" id="focusTime" min="1" max="120" value="25">
+                            <span class="unit">min</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="breakTime">Break</label>
+                            <input type="number" id="breakTime" min="1" max="60" value="5">
+                            <span class="unit">min</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="longBreakTime">Long Break</label>
+                            <input type="number" id="longBreakTime" min="1" max="60" value="15">
+                            <span class="unit">min</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="sessionsCount">Sessions</label>
+                            <input type="number" id="sessionsCount" min="1" max="20" value="4">
+                            <span class="unit">#</span>
+                        </div>
+                    </div>
+                    <div class="checkbox-setting">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="autoStart">
+                            Auto-start breaks
+                        </label>
+                    </div>
+                    <button id="saveSettings" class="btn btn-save">Save Settings</button>
+                </div>
             </div>
 
-            <div class="setting-group">
-                <label for="breakTime">Break Time (minutes):</label>
-                <input type="number" id="breakTime" min="1" max="60" value="5">
-            </div>
+            <!-- Website Blocker -->
+            <div class="section">
+                <div class="section-header" data-section="blocker">
+                    <span class="section-icon">🚫</span>
+                    <span>Website Blocker</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="section-content" id="blocker-content">
+                    <div class="add-site-container">
+                        <div class="input-group">
+                            <input type="text" id="blockedSiteInput" placeholder="e.g. youtube.com" class="site-input">
+                            <button id="addSiteBtn" class="btn btn-add">Add</button>
+                        </div>
+                    </div>
 
-            <div class="setting-group">
-                <label for="longBreakTime">Long Break Time (minutes):</label>
-                <input type="number" id="longBreakTime" min="1" max="60" value="15">
-            </div>
+                    <div id="blockList" class="block-list">
+                        <!-- Blocked sites will be added here -->
+                    </div>
 
-            <div class="setting-group">
-                <label for="sessionsCount">Number of Sessions:</label>
-                <input type="number" id="sessionsCount" min="1" max="20" value="4">
-            </div>
+                    <div class="blocker-settings">
+                        <div class="setting-item">
+                            <label for="overrideTime">Override Duration</label>
+                            <input type="number" id="overrideTime" min="1" max="60" value="1">
+                            <span class="unit">min</span>
+                        </div>
 
-            <div class="setting-group">
-                <label>
-                    <input type="checkbox" id="autoStart"> Auto-start breaks
-                </label>
-            </div>
-
-            <button id="saveSettings" class="btn btn-success">Save Settings</button>
-        </div>
-
-        <div class="blocker-settings">
-            <h3>Website Blocker</h3>
-            <p class="blocker-info">Sites added here will be blocked during focus sessions.</p>
-            
-            <div class="setting-group addon">
-                <input 
-                    type="text" 
-                    id="blockedSiteInput"
-                    placeholder="e.g. youtube.com"
-                >
-                <button 
-                    id="addSiteBtn"  
-                    class="btn btn-addon"
-                >
-                    Add
-                </button>
-            </div>
-            
-            <div id="blockList" class="block-list">
-                <!-- List of Blocked sites will be adding here -->
-            </div>
-            
-            <div class="setting-group">
-                <label>
-                    <input type="checkbox" id="blockingModeCheckbox" checked> 
-                    Block websites only during focus mode
-                </label>
-                <p class="setting-description">
-                    When unchecked, websites will be blocked at all times
-                </p>
+                        <div class="checkbox-setting">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="blockingModeCheckbox" checked>
+                                Block only during focus sessions
+                            </label>
+                            <p class="setting-description">
+                                Uncheck to block websites at all times
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
+
     <script src="popup.js"></script>
 </body>
+
 </html>

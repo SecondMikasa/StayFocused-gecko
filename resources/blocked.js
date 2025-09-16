@@ -230,6 +230,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const visualEnhancements = new VisualEnhancements();
     
     const overrideBtn = document.getElementById('overrideBtn');
+    
+    // Load and set the dynamic override time
+    let overrideMinutes = 1; // Default
+    
+    // Function to update button text
+    function updateButtonText(minutes) {
+        const timeText = minutes === 1 ? '1 min' : `${minutes} min`;
+        overrideBtn.innerHTML = `🔓 I really need to access this (${timeText})`;
+    }
+    
+    // Load override time and update button
+    browser.storage.local.get('overrideTime').then(result => {
+        overrideMinutes = result.overrideTime || 1;
+        updateButtonText(overrideMinutes);
+    }).catch(error => {
+        console.error('Error loading override time:', error);
+        updateButtonText(1);
+    });
+    
     overrideBtn.addEventListener('click', async () => {
         try {
             // Disable button immediately to prevent double-clicks
@@ -319,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Reset button after a delay
             setTimeout(() => {
-                overrideBtn.textContent = "I really need to access this (1 min)";
+                updateButtonText(overrideMinutes);
                 overrideBtn.style.background = '';
                 overrideBtn.disabled = false;
             }, 3000);
