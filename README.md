@@ -14,7 +14,7 @@ Stay Focused is a minimalist yet powerful Pomodoro timer + Website Blocker built
 - ~~Block Site -> Lets you block the distracting websites while the timer is running~~ **IMPLEMENTED**
 - Give users more controll over sessions eg. skip session, skip break etc. 
 - A must needed feature to block mindless scrolling (Specifically for myself if anything)
-- Ability to control the block override timer (currently set to 1 min by default)
+- ~~Ability to control the block override timer (currently set to 1 min by default)~~ **IMPLEMENTED**
 - Configurable notification sound and volume (uses the Windows default currently)
 
 ## Current Scenario
