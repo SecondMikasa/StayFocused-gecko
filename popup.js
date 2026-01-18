@@ -146,12 +146,19 @@ class PomodoroTimer {
                 if (response && response.success) {
                     const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
                     this.showNotification(`Blocking mode updated to: ${modeText}`);
-                } else {
+                } else if (response && response.error) {
+                    console.error('[Popup] Background returned error:', response.error);
                     this.showNotification('Error updating blocking mode');
+                } else {
+                    const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
+                    this.showNotification(`Blocking mode set to: ${modeText}`);
                 }
             }).catch((error) => {
                 console.error('[Popup] Error sending blocking mode update:', error);
-                this.showNotification('Error updating blocking mode');
+                // Even if message fails, the storage was updated successfully
+                // Background script's storage listener should pick up the change
+                const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
+                this.showNotification(`Blocking mode set to: ${modeText} (sync pending)`);
             });
         }).catch((error) => {
             console.error('[Popup] Error saving blocking mode to storage:', error);

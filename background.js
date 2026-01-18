@@ -1,9 +1,8 @@
 class PomodoroBackground {
     constructor() {
         // console.log("[Background] Initializing PomodoroBackground...");
-        // Bind the listener method to 'this' to maintain context
-        //FIXME: NO CLUE WHAT IT DOES (THANK THE AI GOD THAT MADE IT WORK)
-        this.blockingListener = this.blockingListener.bind(this);
+        // Create the blocking listener using factory method for consistent behavior
+        this.blockingListener = this._createBlockingListener();
 
         // Initialize error handling state
         this.fallbackNotificationInterval = null;
@@ -39,18 +38,43 @@ class PomodoroBackground {
             this.setupAlarmListener();
             this.setupNavigationListener();
             this.setupExtensionLifecycleHandlers();
+            this.setupStorageChangeListener(); // Listen for storage changes
             await this.loadBlockedSites(); // Wait for blocked sites to load
             await this.performStartupCleanup();
             this.isInitialized = true;
-            // console.log("[Background] Background script initialized successfully");
+            console.log("[Background] ✅ Background script initialized successfully");
 
-            // Set up periodic check for Firefox Android
+            // Set up periodic check
             this.setupPeriodicBlockingCheck();
         } catch (error) {
             console.error("[Background] Error during initialization:", error);
             // Retry initialization after a delay
             setTimeout(() => this.initialize(), 2000);
         }
+    }
+    
+    setupStorageChangeListener() {
+        // Listen for storage changes to keep blocking state in sync
+        browser.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            
+            console.log("[Storage] Storage changed:", Object.keys(changes));
+            
+            // If blocked sites changed, reload them and update blocking
+            if (changes.blockedSites) {
+                console.log("[Storage] Blocked sites changed, reloading...");
+                this.loadBlockedSites();
+            }
+            
+            // If blocking mode changed, update blocking
+            if (changes.blockingMode) {
+                console.log("[Storage] Blocking mode changed to:", changes.blockingMode.newValue);
+                if (this.settings) {
+                    this.settings.blockingMode = changes.blockingMode.newValue;
+                }
+                this.updateBlocking();
+            }
+        });
     }
 
     async initializeTimer() {
@@ -224,6 +248,8 @@ class PomodoroBackground {
                 this.tick();
             } else if (alarm.name === 'overrideExpirationCheck') {
                 this.checkOverrideExpiration();
+            } else if (alarm.name === 'blockingStateCheck') {
+                this.verifyBlockingState();
             }
         });
     }
@@ -374,31 +400,66 @@ class PomodoroBackground {
     }
 
     setupPeriodicBlockingCheck() {
-        // Periodic check to ensure blocking state is correct
-        setInterval(() => {
-            if (this.isInitialized && this.state && this.blockedSites) {
-                // Don't do anything during override
-                if (this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
-                    return;
-                }
-                
-                // On Android, we don't use webRequest - skip this check
-                if (this.isAndroid) {
-                    return;
-                }
-
-                const blockingMode = this.getBlockingMode();
-                const shouldBlock = this.shouldBlockTab('https://example.com', this.state, blockingMode);
-                
-                if (shouldBlock && this.blockedSites.length > 0) {
-                    const hasListener = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
-                    if (!hasListener) {
-                        console.warn("[Blocking] Periodic check detected missing listener, re-enabling blocking");
-                        this.enableBlocking();
-                    }
-                }
+        console.log("[Blocking] Setting up periodic blocking check (every 5 seconds)");
+        
+        // Using alarms instead of setInterval for more reliable execution
+        browser.alarms.create('blockingStateCheck', { periodInMinutes: 5 / 60 }); // Every 5 seconds
+        
+        // Verifying blocking state when any tab is activated
+        browser.tabs.onActivated.addListener(() => {
+            // Small delay to avoid race conditions
+            setTimeout(() => this.verifyBlockingState(), 500);
+        });
+        
+        // Verifying on window focus changes (user returning to browser)
+        browser.windows.onFocusChanged.addListener((windowId) => {
+            if (windowId !== browser.windows.WINDOW_ID_NONE) {
+                console.log("[Blocking] Window focus changed, verifying blocking state");
+                setTimeout(() => this.verifyBlockingState(), 300);
             }
-        }, 30000);
+        });
+    }
+    
+    verifyBlockingState() {
+        if (!this.isInitialized || !this.state || !this.blockedSites) {
+            console.log("[Blocking] Verify skipped - not initialized");
+            return;
+        }
+        
+        // Don't do anything during override
+        if (this.state.overrideUntil && Date.now() < this.state.overrideUntil) {
+            return;
+        }
+        
+        // On Android, we don't use webRequest - skip this check
+        if (this.isAndroid) {
+            return;
+        }
+
+        const blockingMode = this.getBlockingMode();
+        
+        // For 'always' mode, we should always have the listener if there are blocked sites
+        // For 'focus-only' mode, we only need the listener during focus sessions
+        let shouldHaveListener = false;
+        
+        if (this.blockedSites.length > 0) {
+            if (blockingMode === 'always') {
+                shouldHaveListener = true;
+            } else if (blockingMode === 'focus-only') {
+                shouldHaveListener = this.state.isRunning && this.state.currentPhase === 'focus';
+            }
+        }
+        
+        const hasListener = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
+        
+        // Only log when there's a mismatch or periodically for debugging
+        if (shouldHaveListener !== hasListener) {
+            if (shouldHaveListener && !hasListener) {
+                this.enableBlocking();
+            } else if (!shouldHaveListener && hasListener) {
+                this.disableBlocking();
+            }
+        }
     }
 
     async performStartupCleanup() {
@@ -584,9 +645,14 @@ class PomodoroBackground {
             this.settings.blockingMode = newBlockingMode;
 
             // Save to storage
-            await browser.storage.local.set({ blockingMode: newBlockingMode });            
+            await browser.storage.local.set({ blockingMode: newBlockingMode });
+            
             // Immediately apply new blocking behavior
+            // This will re-create the listener if needed
             this.updateBlocking();
+            
+            // Verify the blocking state is correct after update
+            setTimeout(() => this.verifyBlockingState(), 100);
         } catch (error) {
             console.error('[Blocking] Error saving blocking mode:', error);
             throw error; // Re-throw so the message handler can catch it
@@ -711,65 +777,88 @@ class PomodoroBackground {
         }
     }
 
-    blockingListener(details) {
-        // CRITICAL: Check override state FIRST before any blocking
-        // This prevents blocking during active override period
-        if (this.state && this.state.overrideUntil) {
-            const now = Date.now();
-            if (now < this.state.overrideUntil) {
-                // Override is active - allow ALL requests without any processing
-                return;
-            }
-        }
-        
-        // Double-check: if we don't have proper state, don't block
-        if (!this.state || !this.blockedSites || this.blockedSites.length === 0) {
-            return;
-        }
-        
-        // Use the blocking decision logic
-        const blockingMode = this.getBlockingMode();
-        const shouldBlock = this.shouldBlockTab(details.url, this.state, blockingMode);
-
-        if (!shouldBlock) {
-            return;
-        }
-
-        // Check if URL is in blocked list
-        const isBlocked = this.isUrlBlocked(details.url, this.blockedSites);
-
-        if (isBlocked) {
-            const timerRunning = this.state.isRunning;
-            const currentPhase = this.state.currentPhase;
-
-            const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url) +
-                "&mode=" + encodeURIComponent(blockingMode) +
-                "&timerRunning=" + encodeURIComponent(timerRunning) +
-                "&phase=" + encodeURIComponent(currentPhase);
-            const fullUrl = browser.runtime.getURL(redirectPath);
-
-            console.log(`[Blocking] Redirecting ${details.url} to blocked page`);
-            return { redirectUrl: fullUrl };
-        }
-    }
-
     enableBlocking() {
         console.log("[Blocking] Attempting to enable blocking");
-        if (!browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
-            console.log("[Blocking] Adding webRequest listener");
-            try {
+        
+        // Force remove any existing listener first to ensure clean state
+        try {
+            if (browser.webRequest.onBeforeRequest.hasListener(this.blockingListener)) {
+                console.log("[Blocking] Removing existing listener before re-adding");
+                browser.webRequest.onBeforeRequest.removeListener(this.blockingListener);
+            }
+        } catch (err) {
+            console.warn("[Blocking] Error checking/removing existing listener:", err);
+            // If hasListener fails, the listener reference might be stale - rebind it
+            console.log("[Blocking] Re-binding blockingListener due to error");
+            this.blockingListener = this._createBlockingListener();
+        }
+        
+        // Now add the listener fresh
+        try {
+            browser.webRequest.onBeforeRequest.addListener(
+                this.blockingListener,
+                { urls: ["<all_urls>"], types: ["main_frame"] },
+                ["blocking"]
+            );
+            console.log("[Blocking] Listener successfully added");
+            
+            // Verify it was actually added
+            const verified = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
+            console.log(`[Blocking] Listener verification: ${verified ? ' CONFIRMED' : 'FAILED'}`);
+            
+            if (!verified) {
+                console.error("[Blocking] Listener was not added successfully, trying with fresh listener");
+                // Try one more time with a fresh listener
+                this.blockingListener = this._createBlockingListener();
                 browser.webRequest.onBeforeRequest.addListener(
                     this.blockingListener,
                     { urls: ["<all_urls>"], types: ["main_frame"] },
                     ["blocking"]
                 );
-                console.log("[Blocking] Listener successfully added");
-            } catch (err) {
-                console.error("[Blocking] Error adding listener:", err);
             }
-        } else {
-            console.log("[Blocking] Listener already exists");
+        } catch (err) {
+            console.error("[Blocking] Error adding listener:", err);
         }
+    }
+    
+    // Factory method to create a fresh blocking listener bound to this instance
+    _createBlockingListener() {
+        return (details) => {
+            // CRITICAL: Check override state FIRST before any blocking
+            if (this.state && this.state.overrideUntil) {
+                const now = Date.now();
+                if (now < this.state.overrideUntil) {
+                    return; // Override is active - allow ALL requests
+                }
+            }
+            
+            if (!this.state || !this.blockedSites || this.blockedSites.length === 0) {
+                return;
+            }
+            
+            const blockingMode = this.getBlockingMode();
+            const shouldBlock = this.shouldBlockTab(details.url, this.state, blockingMode);
+
+            if (!shouldBlock) {
+                return;
+            }
+
+            const isBlocked = this.isUrlBlocked(details.url, this.blockedSites);
+
+            if (isBlocked) {
+                const timerRunning = this.state.isRunning;
+                const currentPhase = this.state.currentPhase;
+
+                const redirectPath = "resources/blocked.html?url=" + encodeURIComponent(details.url) +
+                    "&mode=" + encodeURIComponent(blockingMode) +
+                    "&timerRunning=" + encodeURIComponent(timerRunning) +
+                    "&phase=" + encodeURIComponent(currentPhase);
+                const fullUrl = browser.runtime.getURL(redirectPath);
+
+                console.log(`[Blocking] Redirecting ${details.url} to blocked page`);
+                return { redirectUrl: fullUrl };
+            }
+        };
     }
 
     disableBlocking() {
@@ -1539,6 +1628,16 @@ class PomodoroBackground {
 
             if (!shouldBlock) {
                 return;
+            }
+
+            // IMPORTANT: Verify webRequest listener is still active
+            // If it's not, re-enable it immediately
+            if (this.blockedSites && this.blockedSites.length > 0) {
+                const hasListener = browser.webRequest.onBeforeRequest.hasListener(this.blockingListener);
+                if (!hasListener) {
+                    console.warn("[Blocking] Listener lost! Re-enabling blocking immediately");
+                    this.enableBlocking();
+                }
             }
 
             // Check if URL is in blocked list
