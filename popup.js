@@ -1,464 +1,323 @@
+// ============================================================
+// Stay Focused – Popup Script
+// Rule: always write preferences to browser.storage.local first.
+// The background's storage.onChanged watcher picks up every
+// change automatically, so sendMessage() is optional / best-effort.
+// ============================================================
+
 class PomodoroTimer {
     constructor() {
-        this.initializeElements();
-        this.loadSettings();
-        this.loadTimerState();
-        this.loadBlockingMode();
-        this.setupEventListeners();
-        this.updateDisplay();
-        this.loadBlockList();
+        this._initElements();
+        this._loadAll();           // read everything from storage once
+        this._setupEvents();
 
-        setInterval(() => this.updateDisplay(), 1000);
-        
-        // Refresh block list periodically and when popup becomes visible
-        setInterval(() => this.loadBlockList(), 5000); // Refresh every 5 seconds
-        
+        // Keep display and block-list fresh while popup is open
+        setInterval(() => this._refreshDisplay(), 1000);
+        setInterval(() => this._refreshBlockList(), 5000);
+
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                this.loadBlockList();
-            }
+            if (!document.hidden) this._loadAll();
         });
     }
 
-    initializeElements() {
-        this.timeDisplay = document.getElementById('timeDisplay');
-        this.sessionInfo = document.getElementById('sessionInfo');
+    // ── element refs ─────────────────────────────────────────
+
+    _initElements() {
+        this.timeDisplay   = document.getElementById('timeDisplay');
+        this.sessionInfo   = document.getElementById('sessionInfo');
         this.statusDisplay = document.getElementById('statusDisplay');
 
-        this.startBtn = document.getElementById('startBtn');
-        this.pauseBtn = document.getElementById('pauseBtn');
-        this.resetBtn = document.getElementById('resetBtn');
+        this.startBtn      = document.getElementById('startBtn');
+        this.pauseBtn      = document.getElementById('pauseBtn');
+        this.resetBtn      = document.getElementById('resetBtn');
 
-        this.focusTimeInput = document.getElementById('focusTime');
-        this.breakTimeInput = document.getElementById('breakTime');
-        this.longBreakTimeInput = document.getElementById('longBreakTime');
-        this.sessionsCountInput = document.getElementById('sessionsCount');
-        this.autoStartInput = document.getElementById('autoStart');
-        this.saveSettingsBtn = document.getElementById('saveSettings');
+        this.focusTimeInput    = document.getElementById('focusTime');
+        this.breakTimeInput    = document.getElementById('breakTime');
+        this.longBreakInput    = document.getElementById('longBreakTime');
+        this.sessionsInput     = document.getElementById('sessionsCount');
+        this.autoStartInput    = document.getElementById('autoStart');
+        this.saveSettingsBtn   = document.getElementById('saveSettings');
 
-        this.blockedSiteInput = document.getElementById('blockedSiteInput');
-        this.addSiteBtn = document.getElementById('addSiteBtn');
-        this.blockList = document.getElementById('blockList');
-        this.blockingModeCheckbox = document.getElementById('blockingModeCheckbox');
+        this.blockedSiteInput  = document.getElementById('blockedSiteInput');
+        this.addSiteBtn        = document.getElementById('addSiteBtn');
+        this.blockList         = document.getElementById('blockList');
+        this.blockingModeChk   = document.getElementById('blockingModeCheckbox');
         this.overrideTimeInput = document.getElementById('overrideTime');
     }
 
-    setupEventListeners() {
-        this.startBtn.addEventListener('click', () => this.startTimer());
-        this.pauseBtn.addEventListener('click', () => this.pauseTimer());
-        this.resetBtn.addEventListener('click', () => this.resetTimer());
-        this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+    // ── load everything from storage ─────────────────────────
 
-        this.addSiteBtn.addEventListener('click', () => this.addBlockedSite());
-
-        // Using event delegation for the remove buttons
-        this.blockList.addEventListener('click', (event) => {
-            if (event.target.classList.contains('remove-site-btn')) {
-                this.removeBlockedSite(event.target.dataset.site);
-            }
-        });
-
-        this.blockingModeCheckbox.addEventListener('change', () => this.saveBlockingMode());
-        this.overrideTimeInput.addEventListener('change', () => this.saveOverrideTime());
-
-        // Handle collapsible sections
-        this.setupCollapsibleSections();
-
-        // Handle Enter key in site input
-        this.blockedSiteInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                this.addBlockedSite();
-            }
-        });
-    }
-
-    setupCollapsibleSections() {
-        const sectionHeaders = document.querySelectorAll('.section-header');
-
-        sectionHeaders.forEach(header => {
-            header.addEventListener('click', () => {
-                const section = header.parentElement;
-                const isCollapsed = section.classList.contains('collapsed');
-
-                // Toggle the clicked section
-                if (isCollapsed) {
-                    section.classList.remove('collapsed');
-                } else {
-                    section.classList.add('collapsed');
-                }
-            });
-        });
-
-        // Start with settings section expanded and blocker collapsed
-        try {
-            const settingsSection = document.querySelector('[data-section="settings"]')?.parentElement;
-            const blockerSection = document.querySelector('[data-section="blocker"]')?.parentElement;
-
-            if (settingsSection) {
-                settingsSection.classList.remove('collapsed');
-            }
-            if (blockerSection) {
-                blockerSection.classList.add('collapsed');
-            }
-        } catch (error) {
-            console.error('Error setting up collapsible sections:', error);
-            // Fallback: show all content
-            document.querySelectorAll('.section').forEach(section => {
-                section.classList.remove('collapsed');
-            });
-        }
-    }
-
-    loadSettings() {
+    _loadAll() {
         browser.storage.local.get([
-            'focusTime', 'breakTime', 'longBreakTime',
-            'sessionsCount', 'autoStart'
-        ]).then((result) => {
-            this.focusTimeInput.value = result.focusTime || 25;
-            this.breakTimeInput.value = result.breakTime || 5;
-            this.longBreakTimeInput.value = result.longBreakTime || 15;
-            this.sessionsCountInput.value = result.sessionsCount || 4;
-            this.autoStartInput.checked = result.autoStart || false;
+            'focusTime', 'breakTime', 'longBreakTime', 'sessionsCount',
+            'autoStart', 'blockingMode', 'overrideTime', 'blockedSites',
+            'isRunning', 'isPaused', 'timeLeft', 'currentSession',
+            'totalSessions', 'currentPhase',
+        ]).then(r => {
+            // Settings
+            this.focusTimeInput.value    = r.focusTime    ?? 25;
+            this.breakTimeInput.value    = r.breakTime    ?? 5;
+            this.longBreakInput.value    = r.longBreakTime ?? 15;
+            this.sessionsInput.value     = r.sessionsCount ?? 4;
+            this.autoStartInput.checked  = r.autoStart    ?? false;
+            this.overrideTimeInput.value = r.overrideTime  ?? 1;
+
+            const blockingMode = r.blockingMode || 'focus-only';
+            this.blockingModeChk.checked = (blockingMode === 'focus-only');
+
+            // Timer state
+            this._applyTimerState(r);
+
+            // Block list
+            this._renderBlockList(r.blockedSites || []);
         });
     }
 
-    loadBlockingMode() {
-        browser.storage.local.get(['blockingMode', 'overrideTime']).then((result) => {
-            // Default to 'focus-only' mode (checkbox checked)
-            const blockingMode = result.blockingMode || 'focus-only';
-            this.blockingModeCheckbox.checked = (blockingMode === 'focus-only');
-            
-            // Load override time (default to 1 minute)
-            const overrideTime = result.overrideTime || 1;
-            this.overrideTimeInput.value = overrideTime;
-        });
-    }
+    _applyTimerState(r) {
+        const timeLeft      = r.timeLeft       ?? (this.focusTimeInput.value * 60);
+        const session       = r.currentSession ?? 1;
+        const totalSessions = r.totalSessions  ?? +this.sessionsInput.value;
+        const phase         = r.currentPhase   ?? 'focus';
+        const isRunning     = r.isRunning      ?? false;
+        const isPaused      = r.isPaused       ?? false;
 
-    saveBlockingMode() {
-        const blockingMode = this.blockingModeCheckbox.checked ? 'focus-only' : 'always';
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        this.timeDisplay.textContent  = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+        this.sessionInfo.textContent  = `Session ${session} of ${totalSessions}`;
 
-        browser.storage.local.set({ blockingMode }).then(() => {
-            // Send message to background script to update blocking behavior immediately
-            browser.runtime.sendMessage({
-                action: 'updateBlockingMode',
-                blockingMode: blockingMode
-            }).then((response) => {
-                if (response && response.success) {
-                    const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
-                    this.showNotification(`Blocking mode updated to: ${modeText}`);
-                } else if (response && response.error) {
-                    console.error('[Popup] Background returned error:', response.error);
-                    this.showNotification('Error updating blocking mode');
-                } else {
-                    const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
-                    this.showNotification(`Blocking mode set to: ${modeText}`);
-                }
-            }).catch((error) => {
-                console.error('[Popup] Error sending blocking mode update:', error);
-                // Even if message fails, the storage was updated successfully
-                // Background script's storage listener should pick up the change
-                const modeText = blockingMode === 'focus-only' ? 'focus mode only' : 'always';
-                this.showNotification(`Blocking mode set to: ${modeText} (sync pending)`);
-            });
-        }).catch((error) => {
-            console.error('[Popup] Error saving blocking mode to storage:', error);
-            this.showNotification('Error saving blocking mode');
-        });
-    }
-
-    saveOverrideTime() {
-        const overrideTime = parseInt(this.overrideTimeInput.value);
-        
-        // Validate the input
-        if (isNaN(overrideTime) || overrideTime < 1 || overrideTime > 60) {
-            this.showNotification('Override time must be between 1 and 60 minutes');
-            this.overrideTimeInput.value = 1; // Reset to default
-            return;
+        let status = '▶️ Ready to start', cls = '';
+        if (isRunning) {
+            if      (phase === 'focus')      { status = '🎯 Focus Time - Stay concentrated!'; cls = 'working'; }
+            else if (phase === 'shortBreak') { status = '☕ Short Break - Relax a bit!';      cls = 'break';   }
+            else if (phase === 'longBreak')  { status = '🌟 Long Break - Well deserved!';     cls = 'break';   }
+        } else if (isPaused) {
+            status = '⏸️ Paused'; cls = 'paused';
         }
+        this.statusDisplay.textContent = status;
+        this.statusDisplay.className   = `status ${cls}`;
 
-        browser.storage.local.set({ overrideTime }).then(() => {
-            this.showNotification(`Override duration set to ${overrideTime} minute${overrideTime > 1 ? 's' : ''}`);
-        }).catch((error) => {
-            console.error('[Popup] Error saving override time:', error);
-            this.showNotification('Error saving override time');
-        });
+        this._isRunning = isRunning;
+        this._isPaused  = isPaused;
+        this._updateButtons();
     }
 
-    loadTimerState() {
+    _refreshDisplay() {
         browser.storage.local.get([
-            'isRunning', 'isPaused', 'currentSession', 'isBreak',
-            'timeLeft', 'totalSessions', 'currentPhase'
-        ]).then((result) => {
-            this.isRunning = result.isRunning || false;
-            this.isPaused = result.isPaused || false;
-            this.currentSession = result.currentSession || 1;
-            this.isBreak = result.isBreak || false;
-            this.timeLeft = result.timeLeft || (parseInt(this.focusTimeInput.value) * 60);
-            this.totalSessions = result.totalSessions || parseInt(this.sessionsCountInput.value);
-            this.currentPhase = result.currentPhase || 'focus';
+            'isRunning', 'isPaused', 'timeLeft',
+            'currentSession', 'totalSessions', 'currentPhase',
+        ]).then(r => this._applyTimerState(r));
+    }
 
-            this.updateButtonStates();
+    _refreshBlockList() {
+        browser.storage.local.get('blockedSites').then(r =>
+            this._renderBlockList(r.blockedSites || []));
+    }
+
+    // ── events ───────────────────────────────────────────────
+
+    _setupEvents() {
+        this.startBtn.addEventListener('click',    () => this._startTimer());
+        this.pauseBtn.addEventListener('click',    () => this._pauseTimer());
+        this.resetBtn.addEventListener('click',    () => this._resetTimer());
+        this.saveSettingsBtn.addEventListener('click', () => this._saveSettings());
+
+        this.addSiteBtn.addEventListener('click',  () => this._addSite());
+        this.blockedSiteInput.addEventListener('keypress', e => {
+            if (e.key === 'Enter') this._addSite();
+        });
+
+        this.blockList.addEventListener('click', e => {
+            if (e.target.classList.contains('remove-site-btn'))
+                this._removeSite(e.target.dataset.site);
+        });
+
+        // Write to storage immediately; background storage watcher will apply changes.
+        this.blockingModeChk.addEventListener('change',   () => this._saveBlockingMode());
+        this.overrideTimeInput.addEventListener('change', () => this._saveOverrideTime());
+
+        this._setupCollapsible();
+    }
+
+    _setupCollapsible() {
+        document.querySelectorAll('.section-header').forEach(header => {
+            header.addEventListener('click', () =>
+                header.parentElement.classList.toggle('collapsed'));
+        });
+
+        document.querySelector('[data-section="settings"]')
+            ?.parentElement?.classList.remove('collapsed');
+        document.querySelector('[data-section="blocker"]')
+            ?.parentElement?.classList.add('collapsed');
+    }
+
+    // ── timer controls ────────────────────────────────────────
+
+    _startTimer() {
+        browser.runtime.sendMessage({ action: 'startTimer' }).then(r => {
+            if (r?.success) { this._isRunning = true; this._isPaused = false; this._updateButtons(); }
         });
     }
 
-    saveSettings() {
-        const settings = {
-            focusTime: parseInt(this.focusTimeInput.value),
-            breakTime: parseInt(this.breakTimeInput.value),
-            longBreakTime: parseInt(this.longBreakTimeInput.value),
-            sessionsCount: parseInt(this.sessionsCountInput.value),
-            autoStart: this.autoStartInput.checked
-        };
-
-        browser.storage.local.set(settings).then(() => {
-            this.showNotification('Settings saved successfully!');
-            setTimeout(() => this.updateDisplay(), 100);
+    _pauseTimer() {
+        browser.runtime.sendMessage({ action: 'pauseTimer' }).then(r => {
+            if (r?.success) { this._isRunning = false; this._isPaused = true; this._updateButtons(); }
         });
+    }
 
-        browser.runtime.sendMessage({
-            action: 'updateSettings',
-            settings: settings
-        }).then((response) => {
-            if (response && response.success) {
-                this.updateDisplay();
+    _resetTimer() {
+        browser.runtime.sendMessage({ action: 'resetTimer' }).then(r => {
+            if (r?.success) {
+                this._isRunning = false; this._isPaused = false;
+                this._updateButtons();
+                this._refreshDisplay();
             }
         });
     }
 
-    startTimer() {
-        browser.runtime.sendMessage({ action: 'startTimer' }).then((response) => {
-            if (response && response.success) {
-                this.isRunning = true;
-                this.isPaused = false;
-                this.updateButtonStates();
-            }
-        });
-    }
-
-    pauseTimer() {
-        browser.runtime.sendMessage({ action: 'pauseTimer' }).then((response) => {
-            if (response && response.success) {
-                this.isRunning = false;
-                this.isPaused = true;
-                this.updateButtonStates();
-            }
-        });
-    }
-
-    resetTimer() {
-        browser.runtime.sendMessage({ action: 'resetTimer' }).then((response) => {
-            if (response && response.success) {
-                this.isRunning = false;
-                this.isPaused = false;
-                this.currentSession = 1;
-                this.isBreak = false;
-                this.currentPhase = 'focus';
-                this.timeLeft = parseInt(this.focusTimeInput.value) * 60;
-                this.updateButtonStates();
-                this.updateDisplay();
-            }
-        });
-    }
-
-    updateButtonStates() {
-        if (this.isRunning) {
-            this.startBtn.disabled = true;
-            this.pauseBtn.disabled = false;
+    _updateButtons() {
+        if (this._isRunning) {
+            this.startBtn.disabled    = true;
+            this.pauseBtn.disabled    = false;
             this.startBtn.textContent = 'Running';
-        } else if (this.isPaused) {
-            this.startBtn.disabled = false;
-            this.pauseBtn.disabled = true;
+        } else if (this._isPaused) {
+            this.startBtn.disabled    = false;
+            this.pauseBtn.disabled    = true;
             this.startBtn.textContent = 'Resume';
         } else {
-            this.startBtn.disabled = false;
-            this.pauseBtn.disabled = true;
+            this.startBtn.disabled    = false;
+            this.pauseBtn.disabled    = true;
             this.startBtn.textContent = 'Start';
         }
     }
 
-    updateDisplay() {
-        browser.storage.local.get([
-            'timeLeft', 'currentSession', 'totalSessions',
-            'currentPhase', 'isRunning', 'isPaused'
-        ]).then((result) => {
-            const timeLeft = result.timeLeft || this.timeLeft || 0;
-            const currentSession = result.currentSession || 1;
-            const totalSessions = result.totalSessions || parseInt(this.sessionsCountInput.value);
-            const currentPhase = result.currentPhase || 'focus';
-            const isRunning = result.isRunning || false;
-            const isPaused = result.isPaused || false;
+    // ── settings ─────────────────────────────────────────────
 
-            const minutes = Math.floor(timeLeft / 60);
-            const seconds = timeLeft % 60;
-            this.timeDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            this.sessionInfo.textContent = `Session ${currentSession} of ${totalSessions}`;
+    _saveSettings() {
+        const s = {
+            focusTime:    +this.focusTimeInput.value,
+            breakTime:    +this.breakTimeInput.value,
+            longBreakTime:+this.longBreakInput.value,
+            sessionsCount:+this.sessionsInput.value,
+            autoStart:     this.autoStartInput.checked,
+        };
 
-            let status = '';
-            let statusClass = '';
-
-            if (isRunning) {
-                if (currentPhase === 'focus') {
-                    status = '🎯 Focus Time - Stay concentrated!';
-                    statusClass = 'working';
-                } else if (currentPhase === 'shortBreak') {
-                    status = '☕ Short Break - Relax a bit!';
-                    statusClass = 'break';
-                } else if (currentPhase === 'longBreak') {
-                    status = '🌟 Long Break - Well deserved!';
-                    statusClass = 'break';
-                }
-            } else if (isPaused) {
-                status = '⏸️ Paused';
-                statusClass = 'paused';
-            } else {
-                status = '▶️ Ready to start';
-                statusClass = '';
-            }
-
-            this.statusDisplay.textContent = status;
-            this.statusDisplay.className = `status ${statusClass}`;
-
-            this.isRunning = isRunning;
-            this.isPaused = isPaused;
-            this.updateButtonStates();
-        });
+        // Write to storage → background storage watcher reacts automatically
+        browser.storage.local.set(s).then(() => {
+            this._toast('Settings saved!');
+            // Also tell background directly so it can update timeLeft while not running
+            browser.runtime.sendMessage({ action: 'updateSettings', settings: s }).catch(() => {});
+        }).catch(() => this._toast('Error saving settings'));
     }
 
-    showNotification(message) {
-        const notification = document.createElement('div');
-        notification.textContent = message;
-        notification.style.cssText = `
-            position: fixed; top: 10px; right: 10px; background: #27ae60;
-            color: white; padding: 10px 15px; border-radius: 5px;
-            font-size: 12px; z-index: 1000;
-        `;
-        document.body.appendChild(notification);
-        setTimeout(() => {
-            document.body.removeChild(notification);
-        }, 2000);
+    // ── blocking mode ─────────────────────────────────────────
+    // Write to storage. The background's storage.onChanged watcher applies it.
+    // sendMessage is fire-and-forget for extra speed on the background side.
+
+    _saveBlockingMode() {
+        const mode = this.blockingModeChk.checked ? 'focus-only' : 'always';
+
+        browser.storage.local.set({ blockingMode: mode }).then(() => {
+            const label = mode === 'focus-only' ? 'focus sessions only' : 'always';
+            this._toast(`Blocking: ${label}`);
+            // Optional direct message — background already got it via storage watcher
+            browser.runtime.sendMessage({ action: 'updateBlockingMode', blockingMode: mode })
+                .catch(() => {}); // silently ignore if background is busy
+        }).catch(() => this._toast('Error saving blocking mode'));
     }
 
-    loadBlockList() {
-        browser.storage.local.get('blockedSites').then(result => {
-            const sites = result.blockedSites || [];
-            console.log('[Popup] Loading block list:', sites);
-            this.renderBlockList(sites);
-        }).catch(error => {
-            console.error('[Popup] Error loading block list:', error);
-            this.renderBlockList([]);
-        });
-    }
-
-    addBlockedSite() {
-        const input = this.blockedSiteInput.value.trim();
-        if (!input) return;
-
-        let site;
-        try {
-            // Remove protocol if present, but keep path
-            site = input.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-            // Remove trailing slash for consistency
-            if (site.endsWith('/')) site = site.slice(0, -1);
-        } catch (e) {
-            site = input.replace(/^www\./i, '');
-        }
-
-        if (site) {
-            browser.storage.local.get('blockedSites').then(result => {
-                const blockedSites = result.blockedSites || [];
-                if (!blockedSites.includes(site)) {
-                    blockedSites.push(site);
-                    browser.storage.local.set({ blockedSites }).then(() => {
-                        browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
-                            this.renderBlockList(blockedSites);
-                            this.blockedSiteInput.value = '';
-                            this.showNotification(`Added ${site} to block list`);
-                        }).catch(error => {
-                            console.error('Error updating background blocklist:', error);
-                            // Still update the UI even if background update fails
-                            this.renderBlockList(blockedSites);
-                            this.blockedSiteInput.value = '';
-                            this.showNotification(`Added ${site} to block list`);
-                        });
-                    });
-                } else {
-                    // Site already exists - refresh the display and show notification
-                    this.renderBlockList(blockedSites);
-                    this.blockedSiteInput.value = '';
-                    this.showNotification(`${site} is already in the block list`);
-                }
-            });
-        }
-    }
-
-    removeBlockedSite(siteToRemove) {
-        // console.log(`[Popup] Removing blocked site: ${siteToRemove}`);
-        browser.storage.local.get('blockedSites').then(result => {
-            let blockedSites = result.blockedSites || [];
-            // console.log("[Popup] Current blocked sites:", blockedSites);
-
-            blockedSites = blockedSites.filter(site => site !== siteToRemove);
-            // console.log("[Popup] Updated blocked sites after removal:", blockedSites);
-
-            browser.storage.local.set({ blockedSites }).then(() => {
-                // console.log("[Popup] Successfully removed site");
-
-                // Force background to reload sites
-                browser.runtime.sendMessage({ action: 'updateBlocklist' }).then(() => {
-                    // console.log("[Popup] Background blocklist updated after removal");
-                    this.renderBlockList(blockedSites);
-                    this.showNotification(`Removed ${siteToRemove} from block list`);
-                }).catch(err => {
-                    console.error("[Popup] Error updating background blocklist:", err);
-                    // Still update the UI even if background update fails
-                    this.renderBlockList(blockedSites);
-                    this.showNotification(`Removed ${siteToRemove} from block list`);
-                });
-            }).catch(err => {
-                console.error("[Popup] Error saving after removal:", err);
-                this.showNotification('Error removing site from block list');
-            });
-        }).catch(err => {
-            console.error("[Popup] Error retrieving blocked sites for removal:", err);
-            this.showNotification('Error removing site from block list');
-        });
-    }
-
-    renderBlockList(sites) {
-        console.log('[Popup] Rendering block list with sites:', sites);
-        this.blockList.replaceChildren();
-        
-        if (!sites || sites.length === 0) {
-            const p = document.createElement('p');
-            p.className = 'blocker-info';
-            p.textContent = 'No sites blocked yet.';
-            this.blockList.appendChild(p);
-            console.log('[Popup] Displayed "No sites blocked yet" message');
+    _saveOverrideTime() {
+        const v = parseInt(this.overrideTimeInput.value);
+        if (isNaN(v) || v < 1 || v > 60) {
+            this._toast('Override time must be 1–60 minutes');
+            this.overrideTimeInput.value = 1;
             return;
         }
+        browser.storage.local.set({ overrideTime: v }).then(() =>
+            this._toast(`Override duration: ${v} min`))
+        .catch(() => this._toast('Error saving override time'));
+    }
 
-        sites.forEach(site => {
-            const div = document.createElement('div');
+    // ── block list ────────────────────────────────────────────
+
+    _addSite() {
+        const raw = this.blockedSiteInput.value.trim();
+        if (!raw) return;
+
+        let site = raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+        if (site.endsWith('/')) site = site.slice(0, -1);
+        if (!site) return;
+
+        browser.storage.local.get('blockedSites').then(r => {
+            const list = r.blockedSites || [];
+            if (list.includes(site)) {
+                this._toast(`${site} is already blocked`);
+                this.blockedSiteInput.value = '';
+                return;
+            }
+            list.push(site);
+            // Write to storage → background storage watcher re-enables blocking if needed
+            browser.storage.local.set({ blockedSites: list }).then(() => {
+                this._renderBlockList(list);
+                this.blockedSiteInput.value = '';
+                this._toast(`Blocked: ${site}`);
+                browser.runtime.sendMessage({ action: 'updateBlocklist' }).catch(() => {});
+            });
+        });
+    }
+
+    _removeSite(site) {
+        browser.storage.local.get('blockedSites').then(r => {
+            const list = (r.blockedSites || []).filter(s => s !== site);
+            browser.storage.local.set({ blockedSites: list }).then(() => {
+                this._renderBlockList(list);
+                this._toast(`Unblocked: ${site}`);
+                browser.runtime.sendMessage({ action: 'updateBlocklist' }).catch(() => {});
+            });
+        });
+    }
+
+    _renderBlockList(sites) {
+        this.blockList.replaceChildren();
+        if (!sites.length) {
+            const p = document.createElement('p');
+            p.className   = 'blocker-info';
+            p.textContent = 'No sites blocked yet.';
+            this.blockList.appendChild(p);
+            return;
+        }
+        for (const site of sites) {
+            const div  = document.createElement('div');
             div.className = 'blocked-site';
 
             const span = document.createElement('span');
             span.textContent = site;
 
-            const btn = document.createElement('button');
+            const btn  = document.createElement('button');
             btn.className = 'remove-site-btn';
-            btn.setAttribute('data-site', site);
-            btn.setAttribute('title', `Remove ${site}`);
+            btn.dataset.site = site;
+            btn.title    = `Remove ${site}`;
             btn.textContent = '×';
 
-            div.appendChild(span);
-            div.appendChild(btn);
+            div.append(span, btn);
             this.blockList.appendChild(div);
-        });
-        
-        console.log('[Popup] Rendered', sites.length, 'blocked sites');
+        }
+    }
+
+    // ── toast notification ────────────────────────────────────
+
+    _toast(msg) {
+        const el = document.createElement('div');
+        el.textContent = msg;
+        el.style.cssText = [
+            'position:fixed', 'top:10px', 'right:10px',
+            'background:#27ae60', 'color:#fff',
+            'padding:10px 15px', 'border-radius:5px',
+            'font-size:12px', 'z-index:9999',
+        ].join(';');
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2000);
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new PomodoroTimer();
-});
+document.addEventListener('DOMContentLoaded', () => new PomodoroTimer());
