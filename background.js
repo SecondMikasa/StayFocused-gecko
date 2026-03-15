@@ -104,6 +104,8 @@ class PomodoroBackground {
         // the old function reference stays attached as an invisible ghost listener.
         this._blockingFn = this._makeBlockingListener();
 
+        this._pendingAndroidRedirects = new Map();
+
         this._init();
     }
 
@@ -269,7 +271,15 @@ class PomodoroBackground {
 
     _setupNavigation() {
         browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-            if (!tab.url || !isHttpUrl(tab.url)) return;
+            if (!tab.url) return;
+
+            // If the tab has landed on a non-http URL (i.e. our moz-extension://
+            // blocked page finished loading), the redirect completed — clear the guard.
+            if (!isHttpUrl(tab.url)) {
+                this._pendingAndroidRedirects.delete(tabId);
+                return;
+            }
+
             if (changeInfo.status !== 'complete') return;
 
             if (this.override.overrideUntil && Date.now() < this.override.overrideUntil) {
@@ -288,6 +298,9 @@ class PomodoroBackground {
         browser.tabs.onActivated.addListener(async ({ tabId }) => {
             if (!this.isAndroid) return;
             if (this.override.overrideUntil && Date.now() < this.override.overrideUntil) return;
+            // Don't re-check a tab we just redirected — it's still mid-navigation.
+            const expiry = this._pendingAndroidRedirects.get(tabId);
+            if (expiry && Date.now() < expiry) return;
             try {
                 const tab = await browser.tabs.get(tabId);
                 if (tab?.url) this._androidBlock(tabId, tab.url);
@@ -296,6 +309,9 @@ class PomodoroBackground {
     }
 
     _androidBlock(tabId, url) {
+        const expiry = this._pendingAndroidRedirects.get(tabId);
+        if (expiry && Date.now() < expiry) return;
+
         if (!isUrlBlocked(url, this.settings.blockedSites)) return;
         const { blockingMode } = this.settings;
         const { isRunning, currentPhase } = this.timer;
@@ -309,9 +325,15 @@ class PomodoroBackground {
             url, mode: blockingMode,
             timerRunning: String(isRunning), phase: currentPhase,
         });
+
+        this._pendingAndroidRedirects.set(tabId, Date.now() + 6000);
+
         browser.tabs.update(tabId, {
             url: browser.runtime.getURL('resources/blocked.html?' + qs),
-        }).catch(() => {});
+        }).catch(() => {
+            // Redirect failed — remove lock immediately so the next event can retry.
+            this._pendingAndroidRedirects.delete(tabId);
+        });
     }
 
     // ── lifecycle ─────────────────────────────────────────────
